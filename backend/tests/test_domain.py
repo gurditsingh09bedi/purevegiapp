@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+from itertools import pairwise
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -120,7 +121,7 @@ def test_free_within_two_miles_then_two_pounds():
 def test_delivery_happy_path():
     path = [Status.PENDING_PAYMENT, Status.PLACED, Status.ACCEPTED, Status.PREPARING,
             Status.READY, Status.OUT_FOR_DELIVERY, Status.DELIVERED]
-    for a, b in zip(path, path[1:]):
+    for a, b in pairwise(path):
         order_flow.check_transition(a, b, OrderType.DELIVERY)
 
 

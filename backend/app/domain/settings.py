@@ -22,7 +22,7 @@ class DayHours(BaseModel):
     closed: bool = False
 
     @model_validator(mode="after")
-    def _opens_before_closes(self) -> "DayHours":
+    def _opens_before_closes(self) -> DayHours:
         if not self.closed and self.opens >= self.closes:
             raise ValueError("opening time must be before closing time")
         return self
@@ -85,7 +85,7 @@ class RestaurantSettings(BaseModel):
     review_prompt_delay_minutes: int = Field(45, ge=0, le=24 * 60)
 
     @model_validator(mode="after")
-    def _check(self) -> "RestaurantSettings":
+    def _check(self) -> RestaurantSettings:
         if self.delivery_start >= self.delivery_end:
             raise ValueError("delivery start must be before delivery end")
         if self.ticket_amber_minutes >= self.ticket_red_minutes:

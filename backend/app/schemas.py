@@ -178,7 +178,7 @@ class OrderCreate(BaseModel):
     table_token: str | None = None
 
     @model_validator(mode="after")
-    def _by_type(self) -> "OrderCreate":
+    def _by_type(self) -> OrderCreate:
         if self.type is OrderType.DELIVERY and (self.slot_start is None or self.address is None):
             raise ValueError("delivery orders need a slot and an address")
         if self.type is OrderType.DINE_IN and not self.table_token:

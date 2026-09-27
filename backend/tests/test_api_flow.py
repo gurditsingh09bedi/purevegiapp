@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("sqlalchemy")
 
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi.testclient import TestClient
 
 FROZEN = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)  # 1 pm in London (BST)
 
