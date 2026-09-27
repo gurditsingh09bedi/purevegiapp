@@ -1,0 +1,33 @@
+# Local development: docker compose up --build
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: purevegi
+      POSTGRES_PASSWORD: purevegi
+      POSTGRES_DB: purevegi
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  api:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      PV_DATABASE_URL: postgresql+psycopg://purevegi:purevegi@db:5432/purevegi
+    ports: ["8000:8000"]
+    depends_on: [db, redis]
+
+  worker:
+    build: ./backend
+    command: python -m app.worker
+    env_file: ./backend/.env
+    environment:
+      PV_DATABASE_URL: postgresql+psycopg://purevegi:purevegi@db:5432/purevegi
+    depends_on: [db]
+
+volumes:
+  pgdata:
