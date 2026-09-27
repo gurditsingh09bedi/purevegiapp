@@ -33,6 +33,8 @@ def restaurant(s: RestaurantSettings = Depends(settings)):
             "min_order_pence": s.min_order_pence,
         },
         "online_orders_paused": s.online_orders_paused,
+        "prep_minute_choices": s.prep_minute_choices,
+        "ticket_minutes": {"amber": s.ticket_amber_minutes, "red": s.ticket_red_minutes},
         "bookings_enabled": s.bookings_enabled,
     }
 

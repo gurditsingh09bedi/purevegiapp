@@ -12,7 +12,7 @@ from ..db import get_db
 from ..deps import admin_only, config, settings
 from ..domain.order_flow import Status
 from ..domain.settings import RestaurantSettings
-from ..models import Category, DiningTable, MenuItem, Option, OptionGroup, Order, Promotion, User
+from ..models import Category, DiningTable, MenuItem, Option, OptionGroup, Order, Promotion, Role, User
 from ..schemas import (
     CategoryIn,
     CategoryOut,
@@ -56,6 +56,12 @@ def update_settings(changes: dict, db: Session = Depends(get_db), s: RestaurantS
 
 
 # --- Menu --------------------------------------------------------------------------------
+
+
+@router.get("/menu", response_model=list[CategoryOut])
+def full_menu(db: Session = Depends(get_db)):
+    """Every category and dish, including hidden categories and sold-out dishes."""
+    return db.scalars(select(Category).order_by(Category.sort_order, Category.id)).all()
 
 
 @router.post("/categories", response_model=CategoryOut, status_code=201)
@@ -127,7 +133,7 @@ def list_promotions(db: Session = Depends(get_db)):
 
 @router.post("/promotions", response_model=PromotionIO, status_code=201)
 def create_promotion(body: PromotionIO, db: Session = Depends(get_db)):
-    data = body.model_dump(exclude={"id"})
+    data = body.model_dump(exclude={"id", "uses"})
     data["code"] = data["code"].strip().upper() if data["code"] else None
     if data["code"] and db.scalar(select(Promotion).where(Promotion.code == data["code"])):
         raise HTTPException(409, "that code already exists")
@@ -140,7 +146,7 @@ def create_promotion(body: PromotionIO, db: Session = Depends(get_db)):
 @router.put("/promotions/{pid}", response_model=PromotionIO)
 def update_promotion(pid: int, body: PromotionIO, db: Session = Depends(get_db)):
     p = db.get(Promotion, pid) or _404("offer")
-    for k, v in body.model_dump(exclude={"id"}).items():
+    for k, v in body.model_dump(exclude={"id", "uses"}).items():
         setattr(p, k, v.strip().upper() if k == "code" and v else v)
     db.commit()
     return p
@@ -149,8 +155,28 @@ def update_promotion(pid: int, body: PromotionIO, db: Session = Depends(get_db))
 # --- Staff -------------------------------------------------------------------------------
 
 
+@router.get("/staff", response_model=list[UserOut])
+def list_staff(db: Session = Depends(get_db)):
+    return db.scalars(select(User).where(User.role != Role.CUSTOMER).order_by(User.id)).all()
+
+
+@router.post("/staff/{user_id}/active", response_model=UserOut)
+def set_staff_active(user_id: int, active: bool, db: Session = Depends(get_db)):
+    """Switch a staff login off when someone leaves (their history stays)."""
+    u = db.get(User, user_id) or _404("staff member")
+    if u.role == Role.OWNER and not active:
+        raise HTTPException(409, "the owner account can't be switched off")
+    u.is_active = active
+    db.commit()
+    return u
+
+
 @router.post("/staff", response_model=UserOut, status_code=201)
-def create_staff(body: StaffIn, db: Session = Depends(get_db)):
+def create_staff(body: StaffIn, db: Session = Depends(get_db), actor: User = Depends(admin_only)):
+    if body.role in {Role.OWNER, Role.CUSTOMER}:
+        raise HTTPException(422, "staff can be kitchen, waiter, driver or manager")
+    if body.role == Role.MANAGER and actor.role != Role.OWNER:
+        raise HTTPException(403, "only the owner can add managers")
     if db.scalar(select(User).where(User.email == body.email.lower())):
         raise HTTPException(409, "an account with this email already exists")
     u = User(name=body.name, email=body.email.lower(), phone=body.phone,

@@ -43,6 +43,7 @@ class UserOut(ORM):
     phone: str | None
     role: Role
     loyalty_points: int
+    is_active: bool
 
 
 class StaffIn(BaseModel):
@@ -310,4 +311,5 @@ class PromotionIO(ORM):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     max_uses: int | None = None
+    uses: int = 0  # read-only: how many times it has been used
     is_active: bool = True

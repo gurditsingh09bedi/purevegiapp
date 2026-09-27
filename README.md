@@ -6,7 +6,7 @@ Pure Vegi, 324 Soho Rd, Handsworth, Birmingham.
 | Folder | What | Status |
 | --- | --- | --- |
 | `backend/` | Python FastAPI API, PostgreSQL | First version (this commit) |
-| `admin/` | Admin panel + kitchen screen (Next.js) | Next |
+| `admin/` | Staff web app: kitchen screen + admin panel (React + Vite) | First version |
 | `web/` | Customer 3D website (Next.js + Three.js) | Planned |
 | `app/` | Customer + driver app (React Native / Expo) | Planned |
 
@@ -20,6 +20,18 @@ open http://localhost:8000/docs          # every endpoint, try them in the brows
 ```
 
 Tests: `cd backend && pip install ".[dev]" && pytest`
+
+Staff app (kitchen screen + admin):
+
+```bash
+cd admin
+cp .env.example .env        # VITE_API_URL = where the API runs
+npm install
+npm run dev                 # http://localhost:3000, log in with the owner account from the seed step
+```
+
+Kitchen staff see only the kitchen screen; owner and managers also get Orders, Menu, Offers, Tables,
+Staff and Settings.
 
 ## What the backend does
 
