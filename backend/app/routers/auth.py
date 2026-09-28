@@ -1,11 +1,13 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import AppConfig
 from ..db import get_db
-from ..deps import config, current_user
-from ..models import Device, Notification, User, utcnow
+from ..deps import config, current_user, now
+from ..models import Device, Notification, User
 from ..schemas import DeviceIn, LoginIn, RegisterIn, TokenOut, UserOut
 from ..security import create_token, hash_password, verify_password
 
@@ -60,11 +62,11 @@ def register_device(body: DeviceIn, user: User = Depends(current_user), db: Sess
 
 
 @router.get("/notifications")
-def my_notifications(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def my_notifications(user: User = Depends(current_user), db: Session = Depends(get_db), at: datetime = Depends(now)):
     """In-app inbox, including the Google review prompt once it is due."""
     rows = db.scalars(
         select(Notification)
-        .where(Notification.user_id == user.id, Notification.send_at <= utcnow())
+        .where(Notification.user_id == user.id, Notification.send_at <= at)
         .order_by(Notification.send_at.desc())
         .limit(50)
     ).all()

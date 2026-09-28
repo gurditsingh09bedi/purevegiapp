@@ -16,6 +16,7 @@ FROZEN = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)  # 1 pm in London (BST)
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PV_DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("PV_DEV_PAYMENTS", "true")
+    monkeypatch.setenv("PV_JWT_SECRET", "test-secret-that-is-long-enough-for-hs256-signing")
     from app import config, db, deps, seed
 
     config.get_config.cache_clear()
