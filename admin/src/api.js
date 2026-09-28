@@ -1,6 +1,7 @@
 // Thin client for the Pure Vegi API.
 const env = import.meta.env || {};
-export const API_URL = (env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// Empty = same address as this app (development proxy, or API served behind the same domain).
+export const API_URL = (env.VITE_API_URL || "").replace(/\/$/, "");
 export const SITE_URL = (env.VITE_SITE_URL || "https://purevegi.co.uk").replace(/\/$/, "");
 
 const TOKEN_KEY = "pv_staff_token";
@@ -37,7 +38,7 @@ function errorText(body, status) {
 }
 
 export async function api(path, { method = "GET", body, query } = {}) {
-  const url = new URL(API_URL + path);
+  const url = new URL(API_URL + path, window.location.origin);
   if (query) Object.entries(query).forEach(([k, v]) => v !== undefined && v !== null && url.searchParams.set(k, v));
   const headers = { Accept: "application/json" };
   const token = getToken();
@@ -61,7 +62,7 @@ export async function api(path, { method = "GET", body, query } = {}) {
 
 export function kitchenSocket(onEvent) {
   // Live updates; the screen also polls, so a dropped socket only delays updates.
-  const wsUrl = API_URL.replace(/^http/, "ws") + `/ws/kitchen?token=${encodeURIComponent(getToken() || "")}`;
+  const wsUrl = (API_URL || window.location.origin).replace(/^http/, "ws") + `/ws/kitchen?token=${encodeURIComponent(getToken() || "")}`;
   let ws;
   let closed = false;
   let retry;

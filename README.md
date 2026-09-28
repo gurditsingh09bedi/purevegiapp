@@ -10,6 +10,15 @@ Pure Vegi, 324 Soho Rd, Handsworth, Birmingham.
 | `web/` | Customer 3D website (Next.js + Three.js) | Planned |
 | `app/` | Customer + driver app (React Native / Expo) | Planned |
 
+## Try it on GitHub (Codespaces)
+
+1. On the repo page: **Code → Codespaces → Create codespace on main**.
+2. Wait for setup to finish (first time a few minutes): it installs everything, creates a test database and an owner login.
+3. The staff app opens on port 3000 (else open the **Ports** tab → port 3000). Log in with `owner@purevegi.test` / `Test12345`.
+4. API docs: Ports tab → port 8000 → add `/docs` to the address.
+
+Codespaces is for testing; stop it when done (it uses the account's free monthly hours).
+
 ## Run locally
 
 ```bash
