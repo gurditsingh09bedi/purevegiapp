@@ -102,3 +102,24 @@ def test_full_slot_is_first_come_first_served(client):
 def test_beyond_two_miles_costs_two_pounds(client):
     r = client.post("/delivery/quote", json={"lat": 52.5463, "lng": -1.9310})
     assert r.json()["fee_pence"] == 200
+
+
+def test_guest_orders_pays_in_test_mode_and_tracks_with_token(client):
+    c = client
+    item_id = c.get("/menu").json()[0]["items"][0]["id"]
+    seven = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
+    body = {"type": "delivery", "customer_name": "Guest", "customer_phone": "07700900003",
+            "items": [{"menu_item_id": item_id, "quantity": 1}], "slot_start": seven["start"],
+            "address": {"line1": "x", "postcode": "B21", "lat": 52.51, "lng": -1.93}}
+    placed = c.post("/orders", json=body).json()
+    token = {"X-Order-Token": placed["view_token"]}
+    assert c.get(f"/orders/{placed['id']}").status_code == 404
+    assert c.get(f"/orders/{placed['id']}", headers=token).json()["status"] == "pending_payment"
+    assert c.post(f"/orders/{placed['id']}/test-pay", headers=token).json()["status"] == "placed"
+
+
+def test_table_qr_lookup(client):
+    owner = login(client, "owner@purevegi.co.uk", "owner-pass-123")
+    qr = client.get("/admin/tables", headers=owner).json()[0]["qr_url"].split("/t/")[1]
+    assert client.get(f"/tables/qr/{qr}").json()["table_number"] == "1"
+    assert client.get("/tables/qr/nonsense").status_code == 404

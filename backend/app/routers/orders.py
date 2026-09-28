@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from ..domain.settings import RestaurantSettings
 from ..models import STAFF_ROLES, Order, Role, User, utcnow
 from ..realtime import Outbox, get_outbox
 from ..schemas import OrderCreate, OrderOut, PaymentStart
+from ..security import create_token, decode_token
 from ..services import orders as svc
 from ..services import payments
 
@@ -27,10 +29,18 @@ def order_out(order: Order, s: RestaurantSettings) -> OrderOut:
     return out
 
 
-def _can_view(order: Order, user: User | None, guest_phone: str | None) -> bool:
+def _can_view(order: Order, user: User | None, guest_phone: str | None, order_token: str | None = None,
+              secret: str | None = None) -> bool:
     if user and (user.role in STAFF_ROLES or order.user_id == user.id):
         return True
-    # Guests track with their phone number (sent as a header by the website).
+    # Guests (and table guests) track with the order token returned when the order was placed.
+    if order_token and secret:
+        try:
+            if decode_token(order_token, secret, kind="order")["sub"] == str(order.id):
+                return True
+        except jwt.PyJWTError:
+            pass
+    # Or with their phone number.
     return order.user_id is None and bool(guest_phone) and guest_phone == order.customer_phone
 
 
@@ -50,7 +60,9 @@ def place_order(
         db.rollback()
         raise HTTPException(e.status_code, str(e)) from None
     db.commit()
-    return order_out(order, s)
+    out = order_out(order, s)
+    out.view_token = create_token(str(order.id), cfg.jwt_secret, minutes=60 * 24 * 30, kind="order")
+    return out
 
 
 @router.post("/orders/{order_id}/pay", response_model=PaymentStart)
@@ -60,9 +72,10 @@ def start_payment(
     user: User | None = Depends(optional_user),
     cfg: AppConfig = Depends(config),
     x_guest_phone: str | None = Header(None),
+    x_order_token: str | None = Header(None),
 ):
     order = db.get(Order, order_id)
-    if order is None or not _can_view(order, user, x_guest_phone):
+    if order is None or not _can_view(order, user, x_guest_phone, x_order_token, cfg.jwt_secret):
         raise HTTPException(404, "order not found")
     if order.status is not Status.PENDING_PAYMENT:
         raise HTTPException(409, "this order doesn't need paying now")
@@ -123,11 +136,36 @@ def track_order(
     db: Session = Depends(get_db),
     user: User | None = Depends(optional_user),
     s: RestaurantSettings = Depends(settings),
+    cfg: AppConfig = Depends(config),
     x_guest_phone: str | None = Header(None),
+    x_order_token: str | None = Header(None),
 ):
     order = db.get(Order, order_id)
-    if order is None or not _can_view(order, user, x_guest_phone):
+    if order is None or not _can_view(order, user, x_guest_phone, x_order_token, cfg.jwt_secret):
         raise HTTPException(404, "order not found")
+    return order_out(order, s)
+
+
+@router.post("/orders/{order_id}/test-pay", response_model=OrderOut)
+def customer_test_pay(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(optional_user),
+    s: RestaurantSettings = Depends(settings),
+    cfg: AppConfig = Depends(config),
+    outbox: Outbox = Depends(get_outbox),
+    at: datetime = Depends(now),
+    x_order_token: str | None = Header(None),
+):
+    """Test mode only (no Stripe keys, PV_DEV_PAYMENTS=true): the customer's "pay" button marks the order paid.
+    Refused in production and whenever Stripe is set up."""
+    if not cfg.dev_payments or cfg.stripe_secret_key:
+        raise HTTPException(404)
+    order = db.get(Order, order_id)
+    if order is None or not _can_view(order, user, None, x_order_token, cfg.jwt_secret):
+        raise HTTPException(404, "order not found")
+    svc.mark_paid(db, outbox, order, s, at)
+    db.commit()
     return order_out(order, s)
 
 

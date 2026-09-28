@@ -7,14 +7,15 @@ Pure Vegi, 324 Soho Rd, Handsworth, Birmingham.
 | --- | --- | --- |
 | `backend/` | Python FastAPI API, PostgreSQL | First version (this commit) |
 | `admin/` | Staff web app: kitchen screen + admin panel (React + Vite) | First version |
-| `web/` | Customer 3D website (Next.js + Three.js) | Planned |
+| `web/` | Customer website: 3D hero, menu, delivery slots, checkout, tracking, table QR, booking (React + Vite) | First version |
 | `app/` | Customer + driver app (React Native / Expo) | Planned |
 
 ## Try it on GitHub (Codespaces)
 
 1. On the repo page: **Code → Codespaces → Create codespace on main**.
 2. Wait for setup to finish (first time a few minutes): it installs everything, creates a test database and an owner login.
-3. The staff app opens on port 3000 (else open the **Ports** tab → port 3000). Log in with `owner@purevegi.co.uk` / `Test12345`.
+3. The customer website opens on port 5173 (else **Ports** tab → 5173). Staff app (kitchen + admin): port 3000, log in with `owner@purevegi.co.uk` / `Test12345`.
+   Place an order on the website, press the test **Pay** button, and watch it arrive on the kitchen screen.
 4. API docs: Ports tab → port 8000 → add `/docs` to the address.
 
 Codespaces is for testing; stop it when done (it uses the account's free monthly hours).

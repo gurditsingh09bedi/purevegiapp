@@ -19,4 +19,8 @@ cd ../admin
 [ -f .env ] || cp .env.example .env
 npm install --no-audit --no-fund
 
+cd ../web
+[ -f .env ] || cp .env.example .env
+npm install --no-audit --no-fund
+
 echo "Setup done. Log in to the staff app with owner@purevegi.co.uk / Test12345"

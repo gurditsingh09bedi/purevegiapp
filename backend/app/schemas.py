@@ -222,6 +222,7 @@ class OrderOut(ORM):
     events: list[StatusEventOut]
     ready_at: datetime | None = None
     table_number: str | None = None
+    view_token: str | None = None  # only on the order-placed response: lets a guest track this order
 
 
 class PaymentStart(BaseModel):
