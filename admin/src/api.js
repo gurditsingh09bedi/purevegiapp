@@ -60,9 +60,12 @@ export async function api(path, { method = "GET", body, query } = {}) {
   return data;
 }
 
-export function kitchenSocket(onEvent) {
-  // Live updates; the screen also polls, so a dropped socket only delays updates.
-  const wsUrl = (API_URL || window.location.origin).replace(/^http/, "ws") + `/ws/kitchen?token=${encodeURIComponent(getToken() || "")}`;
+export const kitchenSocket = (onEvent) => liveSocket("/ws/kitchen", onEvent);
+export const driverSocket = (onEvent) => liveSocket("/ws/drivers", onEvent);
+
+function liveSocket(path, onEvent) {
+  // Live updates; screens also poll, so a dropped socket only delays updates.
+  const wsUrl = (API_URL || window.location.origin).replace(/^http/, "ws") + `${path}?token=${encodeURIComponent(getToken() || "")}`;
   let ws;
   let closed = false;
   let retry;

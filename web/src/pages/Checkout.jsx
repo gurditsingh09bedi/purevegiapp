@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, lookupPostcode, myOrderTokens, orderHeaders, STRIPE_PK } from "../api.js";
 import { clock, money } from "../format.js";
-import { Link, navigate, openNow, useApp, useLoad } from "../state.jsx";
+import { Link, native, navigate, openNow, useApp, useLoad } from "../state.jsx";
 
 const TIPS = [0, 100, 200, 300];
 
@@ -80,6 +80,7 @@ export default function Checkout() {
       notes: notes.trim(),
       tip_pence: tip,
       promo_code: promo.trim() || null,
+      push_token: native()?.pushToken || null,
       items: cart.map((l) => ({ menu_item_id: l.itemId, quantity: l.quantity, option_ids: l.optionIds, notes: l.notes || "" })),
     };
     if (type === "delivery") {

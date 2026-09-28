@@ -164,6 +164,7 @@ class Order(TS, Base):
     customer_name: Mapped[str] = mapped_column(String(120), default="")
     customer_phone: Mapped[str] = mapped_column(String(32), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    push_token: Mapped[str | None] = mapped_column(String(300))  # the app's push token, for guests without an account
 
     # Delivery
     slot_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

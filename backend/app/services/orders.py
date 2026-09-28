@@ -179,6 +179,7 @@ def create_order(
         customer_name=data.customer_name or (user.name if user else ""),
         customer_phone=data.customer_phone or (user.phone or "" if user else ""),
         notes=data.notes,
+        push_token=data.push_token,
         tip_pence=data.tip_pence,
         items=lines,
     )

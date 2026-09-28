@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 
 from . import models  # noqa: F401  (registers tables)
 from .config import get_config
@@ -13,11 +14,27 @@ from .routers import admin, auth, dine_in, orders, public, staff
 from .security import decode_token
 
 
+def _add_missing_columns(engine) -> None:
+    """Development only: add columns that are new in the code to an existing test database.
+    (create_all makes new tables but never changes existing ones.) Production uses migrations."""
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in have and col.nullable:
+                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = get_config()
     if not cfg.is_prod:
-        Base.metadata.create_all(get_engine())  # production uses migrations (Alembic)
+        engine = get_engine()
+        Base.metadata.create_all(engine)  # production uses migrations (Alembic)
+        _add_missing_columns(engine)
     yield
 
 

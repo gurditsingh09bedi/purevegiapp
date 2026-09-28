@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, myOrderTokens } from "../api.js";
 import { money } from "../format.js";
-import { Link, navigate, useApp } from "../state.jsx";
+import { Link, native, navigate, useApp } from "../state.jsx";
 import { MenuSection } from "./Home.jsx";
 
 export function TableMenu({ token }) {
@@ -55,6 +55,7 @@ export function TableCheckout() {
         method: "POST",
         body: {
           type: "dine_in", table_token: table.token, customer_name: name.trim(), notes: notes.trim(),
+          push_token: native()?.pushToken || null,
           items: cart.map((l) => ({ menu_item_id: l.itemId, quantity: l.quantity, option_ids: l.optionIds, notes: l.notes || "" })),
         },
       });

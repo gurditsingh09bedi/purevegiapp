@@ -1,0 +1,22 @@
+name: app
+on:
+  push:
+    paths: ["app/**", ".github/workflows/app.yml"]
+  pull_request:
+    paths: ["app/**"]
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npm run setup
+      - name: Bundle the JavaScript (catches broken imports and syntax)
+        run: npm run check

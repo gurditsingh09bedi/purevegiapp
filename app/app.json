@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Pure Vegi",
+    "slug": "purevegi",
+    "scheme": "purevegi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#023E32",
+    "ios": {
+      "bundleIdentifier": "uk.co.purevegi.app",
+      "supportsTablet": false,
+      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+    },
+    "android": {
+      "package": "uk.co.purevegi.app",
+      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#023E32" }
+    },
+    "plugins": [
+      ["expo-notifications", { "color": "#023E32" }],
+      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 200, "backgroundColor": "#023E32" }]
+    ],
+    "extra": {
+      "siteUrl": "https://purevegi.co.uk",
+      "eas": { "projectId": "" }
+    }
+  }
+}

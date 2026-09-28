@@ -177,6 +177,8 @@ class OrderCreate(BaseModel):
     address: Address | None = None
     # dine-in: the signed token from the table's QR code
     table_token: str | None = None
+    # set by the Pure Vegi app so guests get push updates for this order
+    push_token: str | None = Field(None, max_length=300)
 
     @model_validator(mode="after")
     def _by_type(self) -> OrderCreate:
@@ -207,6 +209,7 @@ class OrderOut(ORM):
     type: OrderType
     status: Status
     customer_name: str
+    customer_phone: str
     notes: str
     slot_start: datetime | None
     slot_end: datetime | None

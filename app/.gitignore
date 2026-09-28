@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist-check/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+google-services.json

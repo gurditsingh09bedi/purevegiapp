@@ -40,6 +40,11 @@ export function Link({ to, className, children, ...rest }) {
   );
 }
 
+// --- Inside the Pure Vegi phone app -----------------------------------------------
+// The app (app/ folder) opens this website and sets window.PV_NATIVE = { pushToken, platform }
+// before the page loads, then fires "pv:native" if the token arrives later.
+export const native = () => (typeof window !== "undefined" && window.PV_NATIVE) || null;
+
 // --- Cart --------------------------------------------------------------------------
 // A line = one dish with one set of options. key keeps identical choices together.
 const lineKey = (itemId, optionIds, notes) => `${itemId}|${[...optionIds].sort().join(",")}|${notes || ""}`;
@@ -55,6 +60,18 @@ export function AppProvider({ children }) {
 
   useEffect(() => store.set("pv_cart", cart), [cart]);
   useEffect(() => store.set("pv_table", table), [table]);
+
+  // In the app, register this phone for push notifications once the customer is logged in.
+  useEffect(() => {
+    if (!user) return undefined;
+    const register = () => {
+      const n = native();
+      if (n?.pushToken) api("/auth/devices", { method: "POST", body: { push_token: n.pushToken, platform: n.platform || "android" }, quiet: true }).catch(() => {});
+    };
+    register();
+    window.addEventListener("pv:native", register);
+    return () => window.removeEventListener("pv:native", register);
+  }, [user]);
 
   useEffect(() => {
     api("/restaurant").then(setRestaurant).catch(() => {});

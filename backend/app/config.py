@@ -16,6 +16,14 @@ class AppConfig(BaseSettings):
 
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
+    # Push notifications to the Pure Vegi app (Expo push service). Optional access token
+    # if "enhanced security for push" is switched on in the Expo account.
+    expo_access_token: str | None = None
+    # SMS for guests without the app (Twilio). All three are needed to send texts.
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_from_number: str | None = None
+
     # Lets staff mark test orders as paid without Stripe. Never on in production.
     dev_payments: bool = True
 

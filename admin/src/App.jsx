@@ -9,10 +9,12 @@ import Settings from "./pages/Settings.jsx";
 import Offers from "./pages/Offers.jsx";
 import Tables from "./pages/Tables.jsx";
 import Staff from "./pages/Staff.jsx";
+import Driver from "./pages/Driver.jsx";
 
 const ADMIN = ["owner", "manager"];
 const PAGES = [
   { id: "kitchen", label: "Kitchen", roles: ["owner", "manager", "kitchen", "waiter"], el: Kitchen },
+  { id: "driver", label: "Deliveries", roles: ["driver", "owner", "manager"], el: Driver },
   { id: "orders", label: "Orders", roles: ADMIN, el: Orders },
   { id: "menu", label: "Menu", roles: ADMIN, el: Menu },
   { id: "offers", label: "Offers", roles: ADMIN, el: Offers },
@@ -47,10 +49,10 @@ export default function App() {
   if (checking) return <div className="center muted">Loading…</div>;
   if (!user) return <Login onLogin={setUser} />;
 
-  if (user.role === "customer" || user.role === "driver") {
+  if (user.role === "customer") {
     return (
       <div className="center">
-        <p>{user.role === "driver" ? "Drivers use the Pure Vegi app on their phone." : "This screen is for Pure Vegi staff."}</p>
+        <p>This screen is for Pure Vegi staff.</p>
         <button className="btn" onClick={() => { setToken(null); setUser(null); }}>Log out</button>
       </div>
     );

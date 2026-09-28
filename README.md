@@ -8,7 +8,7 @@ Pure Vegi, 324 Soho Rd, Handsworth, Birmingham.
 | `backend/` | Python FastAPI API, PostgreSQL | First version (this commit) |
 | `admin/` | Staff web app: kitchen screen + admin panel (React + Vite) | First version |
 | `web/` | Customer website: 3D hero, menu, delivery slots, checkout, tracking, table QR, booking (React + Vite) | First version |
-| `app/` | Customer + driver app (React Native / Expo) | Planned |
+| `app/` | Pure Vegi store app for Android + iPhone (Expo): website + push notifications | First version, see `app/README.md` |
 
 ## Loading animation photo
 
@@ -46,8 +46,9 @@ npm install
 npm run dev                 # http://localhost:3000, log in with the owner account from the seed step
 ```
 
-Kitchen staff see only the kitchen screen; owner and managers also get Orders, Menu, Offers, Tables,
-Staff and Settings.
+Kitchen staff see only the kitchen screen; drivers see only **Deliveries** (made for phones: navigation,
+call customer, picked up / delivered, live location). Owner and managers get everything.
+On a phone, use the browser's **Add to Home screen** to install it like an app.
 
 ## What the backend does
 
