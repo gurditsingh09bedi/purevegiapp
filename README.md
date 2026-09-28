@@ -10,6 +10,12 @@ Pure Vegi, 324 Soho Rd, Handsworth, Birmingham.
 | `web/` | Customer website: 3D hero, menu, delivery slots, checkout, tracking, table QR, booking (React + Vite) | First version |
 | `app/` | Customer + driver app (React Native / Expo) | Planned |
 
+## Loading animation photo
+
+The loading circle shows `web/public/boy-photo.png` (the little Sikh boy eating Pure Vegi pizza).
+Until that file exists it shows the animated drawing `web/public/loading-boy.svg` instead.
+Use a square image; the face should be in the middle because it is cropped to a circle.
+
 ## Try it on GitHub (Codespaces)
 
 1. On the repo page: **Code → Codespaces → Create codespace on main**.

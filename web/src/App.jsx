@@ -1,4 +1,4 @@
-import { CartDrawer, Footer, Header } from "./components.jsx";
+import { BusyOverlay, CartDrawer, Footer, Header } from "./components.jsx";
 import Account from "./pages/Account.jsx";
 import Book from "./pages/Book.jsx";
 import Checkout from "./pages/Checkout.jsx";
@@ -26,6 +26,7 @@ function Routes() {
       <main>{page}</main>
       <Footer />
       <CartDrawer />
+      <BusyOverlay />
     </>
   );
 }

@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { DishCard, ItemModal } from "../components.jsx";
 import { money } from "../format.js";
-import Hero3D from "../Hero3D.jsx";
-import { Link, openNow, useApp, useLoad } from "../state.jsx";
+import Cinema from "../Cinema.jsx";
+import { openNow, useApp, useLoad } from "../state.jsx";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const t12 = (hhmm) => {
@@ -74,19 +74,8 @@ export default function Home() {
 
   return (
     <>
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">Handsworth · Soho Road · newly refurbished</p>
-          <h1>Fresh veggie food, <span>built your way.</span></h1>
-          <p className="lede">Burgers, wraps, noodles and stir fry, with vegan options. Order for delivery or collection, or book a table.</p>
-          <div className="hero-ctas">
-            <a className="btn primary big" href="#menu" onClick={(e) => { e.preventDefault(); document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" }); }}>Order now</a>
-            <Link to="/book" className="btn ghost big">Book a table</Link>
-          </div>
-          {restaurant?.online_orders_paused && <p className="notice">We're very busy right now and have paused online orders for a few minutes. Please try again shortly.</p>}
-        </div>
-        <Hero3D />
-      </section>
+      <Cinema />
+      {restaurant?.online_orders_paused && <p className="notice paused-banner">We're very busy right now and have paused online orders for a few minutes. Please try again shortly.</p>}
 
       <section className="facts" aria-label="Opening and delivery">
         <div className="fact"><b>{open === null ? "Opening hours" : open ? "Open now" : "Closed now"}</b><span>{todayText}</span></div>

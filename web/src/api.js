@@ -52,7 +52,27 @@ function errorText(body, status) {
   return `Something went wrong (${status}). Please try again.`;
 }
 
-export async function api(path, { method = "GET", body, query, headers: extra } = {}) {
+// Counts requests in flight so the app can show the loading animation.
+// Background refreshes pass { quiet: true } and never trigger it.
+let pending = 0;
+const busyListeners = new Set();
+export const busy = {
+  count: () => pending,
+  subscribe(fn) { busyListeners.add(fn); return () => busyListeners.delete(fn); },
+};
+const bump = (n) => { pending += n; busyListeners.forEach((fn) => fn(pending)); };
+
+export async function api(path, opts = {}) {
+  if (opts.quiet) return request(path, opts);
+  bump(1);
+  try {
+    return await request(path, opts);
+  } finally {
+    bump(-1);
+  }
+}
+
+async function request(path, { method = "GET", body, query, headers: extra } = {}) {
   const url = new URL(API_URL + path, window.location.origin);
   if (query) Object.entries(query).forEach(([k, v]) => v !== undefined && v !== null && url.searchParams.set(k, v));
   const headers = { Accept: "application/json", ...extra };

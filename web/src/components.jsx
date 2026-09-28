@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { busy } from "./api.js";
 import { money } from "./format.js";
 import { Link, navigate, openNow, useApp } from "./state.jsx";
 
@@ -213,5 +214,54 @@ export function Footer() {
         <p className="muted small">© {new Date().getFullYear()} Pure Vegi</p>
       </div>
     </footer>
+  );
+}
+
+// The loading circle: a spinning ring around the little Sikh boy eating Pure Vegi pizza
+// (photo at /boy-photo.png, falling back to the animated drawing /loading-boy.svg). It only appears while
+// something is really loading: after 250 ms of waiting, and it stays at least 700 ms so it
+// never flickers. The first page load uses the same animation from index.html.
+export function BusyOverlay() {
+  const [show, setShow] = useState(false);
+  const shownAt = useRef(0);
+  useEffect(() => {
+    let showTimer;
+    let hideTimer;
+    const boot = document.getElementById("boot-loader");
+    const finishBoot = () => {
+      if (!boot || boot.classList.contains("gone")) return;
+      boot.classList.add("gone");
+      setTimeout(() => boot.remove(), 500);
+    };
+    const onChange = (n) => {
+      if (n > 0 && boot && !boot.classList.contains("gone")) return; // the first-load animation is already showing
+      if (n > 0) {
+        clearTimeout(hideTimer);
+        if (!showTimer && !shownAt.current) showTimer = setTimeout(() => { shownAt.current = Date.now(); setShow(true); showTimer = null; }, 250);
+      } else {
+        clearTimeout(showTimer);
+        showTimer = null;
+        finishBoot();
+        if (shownAt.current) {
+          const wait = Math.max(0, 700 - (Date.now() - shownAt.current));
+          hideTimer = setTimeout(() => { shownAt.current = 0; setShow(false); }, wait);
+        }
+      }
+    };
+    const unsub = busy.subscribe(onChange);
+    // The first requests start as the page mounts; if none are pending shortly after, the page is ready.
+    const first = setTimeout(() => busy.count() === 0 && finishBoot(), 400);
+    return () => { unsub(); clearTimeout(showTimer); clearTimeout(hideTimer); clearTimeout(first); };
+  }, []);
+  if (!show) return null;
+  return (
+    <div className="busy" role="status" aria-live="polite">
+      <div className="busy-card">
+        <div className="pv-spinner small">
+          <img src="/boy-photo.png" alt="" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/loading-boy.svg"; }} />
+        </div>
+        <p>Just a moment…</p>
+      </div>
+    </div>
   );
 }

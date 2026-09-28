@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, orderHeaders, orderSocket, store } from "../api.js";
 import { Modal } from "../components.jsx";
 import { clock, money } from "../format.js";
@@ -27,8 +27,11 @@ export default function Track({ id }) {
   const [driver, setDriver] = useState(null);
   const [showReview, setShowReview] = useState(false);
 
+  const first = useRef(true);
   const load = useCallback(() => {
-    api(`/orders/${id}`, { headers: orderHeaders(id) })
+    const quiet = !first.current;
+    first.current = false;
+    api(`/orders/${id}`, { headers: orderHeaders(id), quiet })
       .then((o) => { setOrder(o); setError(""); })
       .catch((e) => setError(e.status === 404 ? "We can't find this order on this device. Log in, or open the link from the device you ordered on." : e.message));
   }, [id]);
