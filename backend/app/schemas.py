@@ -26,7 +26,8 @@ class RegisterIn(BaseModel):
 
 
 class LoginIn(BaseModel):
-    email: EmailStr
+    # Plain text on purpose: logging in only has to match a stored address.
+    email: str = Field(max_length=254)
     password: str
 
 

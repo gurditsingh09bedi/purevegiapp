@@ -13,10 +13,10 @@ PV_JWT_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
 PV_DEV_PAYMENTS=true
 EOF
 fi
-python -m app.seed --owner-email owner@purevegi.test --owner-password Test12345
+python -m app.seed --owner-email owner@purevegi.co.uk --owner-password Test12345
 
 cd ../admin
 [ -f .env ] || cp .env.example .env
 npm install --no-audit --no-fund
 
-echo "Setup done. Log in to the staff app with owner@purevegi.test / Test12345"
+echo "Setup done. Log in to the staff app with owner@purevegi.co.uk / Test12345"

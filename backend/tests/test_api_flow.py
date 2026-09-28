@@ -20,7 +20,7 @@ def client(tmp_path, monkeypatch):
 
     config.get_config.cache_clear()
     db.init_engine()
-    seed.run("owner@purevegi.test", "owner-pass-123")
+    seed.run("owner@purevegi.co.uk", "owner-pass-123")
     from app.main import app
 
     app.dependency_overrides[deps.now] = lambda: FROZEN
@@ -37,17 +37,17 @@ def login(c, email, pw):
 
 def test_pre_order_to_review_prompt(client):
     c = client
-    owner = login(c, "owner@purevegi.test", "owner-pass-123")
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
     r = c.patch("/admin/settings", headers=owner,
                 json={"google_review_url": "https://g.page/r/purevegi/review", "review_prompt_delay_minutes": 0})
     assert r.status_code == 200, r.text
     for role in ("kitchen", "driver"):
-        r = c.post("/admin/staff", headers=owner, json={"name": role, "email": f"{role}@purevegi.test",
+        r = c.post("/admin/staff", headers=owner, json={"name": role, "email": f"{role}@purevegi.co.uk",
                                                         "password": "staff-pass-123", "role": role})
         assert r.status_code == 201, r.text
-    chef, driver = login(c, "kitchen@purevegi.test", "staff-pass-123"), login(c, "driver@purevegi.test", "staff-pass-123")
+    chef, driver = login(c, "kitchen@purevegi.co.uk", "staff-pass-123"), login(c, "driver@purevegi.co.uk", "staff-pass-123")
 
-    r = c.post("/auth/register", json={"name": "Aman", "email": "aman@example.com", "phone": "07700900001",
+    r = c.post("/auth/register", json={"name": "Aman", "email": "aman@purevegi.co.uk", "phone": "07700900001",
                                        "password": "customer-123"})
     me = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
@@ -84,7 +84,7 @@ def test_pre_order_to_review_prompt(client):
 
 def test_full_slot_is_first_come_first_served(client):
     c = client
-    owner = login(c, "owner@purevegi.test", "owner-pass-123")
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
     c.patch("/admin/settings", headers=owner, json={"drivers_on_shift": 1})
     seven = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
     item_id = c.get("/menu").json()[0]["items"][0]["id"]
