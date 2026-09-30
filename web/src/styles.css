@@ -456,3 +456,19 @@ svg.layer-z { overflow: visible; }
   .caption .hero-ctas .btn { padding: 11px 18px; font-size: 15px; }
   .skip-movie { bottom: 14px; right: 12px; font-size: 14px; }
 }
+
+/* Booking */
+.booked-card { background: var(--paper); border: 2px solid var(--green); border-radius: 22px; padding: 28px; text-align: center; }
+.booked-card.wait { border-color: var(--orange); }
+.booked-icon { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; font-weight: 800; background: var(--green); color: var(--cream); }
+.booked-card.wait .booked-icon { background: var(--orange); color: #2b1503; }
+.booking-ref { font-size: 18px; }
+.booked-card .hero-ctas { justify-content: center; }
+.alts { background: #fff3dc; border: 1px solid #f0d49b; border-radius: 14px; padding: 12px 14px; margin: 12px 0; }
+.alt-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.table-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.table-chip { font: inherit; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; cursor: pointer; text-align: left; }
+.table-chip span { font-size: 13px; color: var(--muted); }
+.table-chip.on { border-color: var(--green); background: var(--green); color: var(--cream); }
+.table-chip.on span { color: #bfe5cf; }
+.booking-line { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; margin: 10px 0; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }

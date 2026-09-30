@@ -263,23 +263,45 @@ class LocationIn(BaseModel):
 
 
 class BookingIn(BaseModel):
-    name: str = Field(max_length=120)
-    phone: str = Field(max_length=32)
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(min_length=10, max_length=32)
     guests: int = Field(ge=1)
     booking_at: datetime
+    table_id: int | None = None  # a table the customer picked; otherwise the best free one
     notes: str = Field("", max_length=500)
 
 
 class BookingOut(ORM):
     id: int
     name: str
+    phone: str
+    notes: str
     guests: int
     booking_at: datetime
+    ends_at: datetime | None
+    table_number: str | None = None
+    created_at: datetime
     deposit_pence: int
     deposit_paid: bool
     refund_pence: int
     status: str
     table_id: int | None
+
+
+class FreeTable(BaseModel):
+    id: int
+    number: str
+    seats: int
+
+
+class BookingTimeOut(BaseModel):
+    start: datetime
+    tables_left: int
+    tables: list[FreeTable]  # up to 3 best-fitting free tables
+
+
+class BookingStatusIn(BaseModel):
+    status: str = Field(pattern="^(confirmed|cancelled|no_show)$")
 
 
 class BillOut(BaseModel):

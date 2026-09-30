@@ -78,6 +78,8 @@ class RestaurantSettings(BaseModel):
     booking_deposit_per_guest: bool = False
     booking_refund_hours: int = Field(24, ge=0)  # full refund if cancelled this early
     booking_slot_minutes: int = Field(30, ge=15, le=120)
+    booking_duration_minutes: int = Field(90, ge=30, le=300)  # how long a booking holds its table
+    booking_min_lead_minutes: int = Field(30, ge=0, le=24 * 60)  # earliest booking = now + this
     booking_max_guests: int = Field(12, ge=1)
 
     # --- Reviews ------------------------------------------------------------

@@ -16,9 +16,16 @@ from sqlalchemy.orm import Session
 
 from ..config import AppConfig
 from ..domain.order_flow import Message
-from ..models import Device, Notification, Order, utcnow
+from ..models import Booking, Device, Notification, Order, utcnow
 
 log = logging.getLogger(__name__)
+
+
+def queue_booking(db: Session, booking, message: Message, kind: str = "booking") -> Notification:
+    n = Notification(user_id=booking.user_id, booking_id=booking.id, kind=kind, title=message.title,
+                     body=message.body, send_at=utcnow())
+    db.add(n)
+    return n
 
 
 def queue(
@@ -105,6 +112,10 @@ def send_due(db: Session, sender: Sender, now: datetime | None = None, limit: in
             for d in devices:
                 if not sender.push(d.push_token, d.platform, n.title, n.body, data):
                     db.delete(d)  # app uninstalled
+        elif n.booking_id:
+            b = db.get(Booking, n.booking_id)
+            if b and b.phone:
+                sender.sms(b.phone, f"{n.title}: {n.body}")
         elif n.order_id:
             order = db.get(Order, n.order_id)
             if order and order.push_token:

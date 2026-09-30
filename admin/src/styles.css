@@ -84,6 +84,7 @@ input[type="checkbox"] { width: 20px; min-height: 20px; accent-color: var(--gree
 .content { padding: 24px 20px 60px; max-width: 1280px; margin: 0 auto; }
 .shell-kitchen .content { max-width: none; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.page-head input[type=date] { width: auto; }
 .page-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 /* Cards, tables */
@@ -179,3 +180,17 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .delivery-actions .btn { text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
 .btn.huge { width: 100%; min-height: 56px; font-size: 19px; }
 .center { text-align: center; }
+
+/* Bookings */
+.booking-list { display: grid; gap: 10px; }
+.booking-row { display: grid; grid-template-columns: 90px 1fr auto auto; gap: 14px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-left: 6px solid var(--ok); border-radius: 12px; padding: 12px 14px; }
+.booking-row.st-pending { border-left-color: var(--amber); background: #fffaf0; }
+.booking-row.st-seated { border-left-color: #1d4e89; }
+.booking-row.st-cancelled, .booking-row.st-no_show { opacity: .55; border-left-color: #bbb; }
+.b-time { font-family: "Rubik"; font-weight: 700; font-size: 20px; color: var(--green); display: flex; flex-direction: column; }
+.b-time span { font-size: 12px; color: var(--muted); font-family: inherit; font-weight: 600; }
+.b-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.badge.b-pending { background: var(--amber-bg); color: #7a4d0c; }
+.badge.b-confirmed { background: var(--ok-bg); color: var(--ok); }
+.badge.b-seated { background: #e4ecf7; color: #1d4e89; }
+@media (max-width: 760px) { .booking-row { grid-template-columns: 70px 1fr; } .booking-row .badge, .b-actions { grid-column: 2; justify-content: flex-start; } }

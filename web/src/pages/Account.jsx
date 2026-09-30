@@ -65,10 +65,28 @@ function SignIn({ onUser }) {
 
 function MyOrders({ user, logout }) {
   const orders = useLoad(() => api("/me/orders"));
+  const bookings = useLoad(() => api("/me/bookings"));
+  const upcoming = (bookings.data || []).filter((b) => ["pending", "confirmed"].includes(b.status) && new Date(b.booking_at) > new Date());
   return (
     <div className="page narrow">
       <h1>Hi {user.name.split(" ")[0]}</h1>
       <p className="muted">{user.loyalty_points} loyalty points · <button className="linklike" onClick={logout}>Log out</button></p>
+      {upcoming.length > 0 && (
+        <>
+          <h2>Your table bookings</h2>
+          <ul className="order-list">
+            {upcoming.map((b) => (
+              <li key={b.id}>
+                <div className="booking-line">
+                  <span><b>#{b.id}</b> · Table {b.table_number} for {b.guests}</span>
+                  <span>{dayAndTime(b.booking_at)}</span>
+                  <span className="pill">{b.status === "confirmed" ? "Confirmed" : "Waiting for confirmation"}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <h2>Your orders</h2>
       {orders.error && <p className="error">{orders.error.message}</p>}
       {orders.data?.length === 0 && <p className="muted">No orders yet. <Link to="/">Browse the menu</Link></p>}

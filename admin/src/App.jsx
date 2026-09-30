@@ -10,10 +10,12 @@ import Offers from "./pages/Offers.jsx";
 import Tables from "./pages/Tables.jsx";
 import Staff from "./pages/Staff.jsx";
 import Driver from "./pages/Driver.jsx";
+import Bookings from "./pages/Bookings.jsx";
 
 const ADMIN = ["owner", "manager"];
 const PAGES = [
   { id: "kitchen", label: "Kitchen", roles: ["owner", "manager", "kitchen", "waiter"], el: Kitchen },
+  { id: "bookings", label: "Bookings", roles: ["owner", "manager", "waiter"], el: Bookings },
   { id: "driver", label: "Deliveries", roles: ["driver", "owner", "manager"], el: Driver },
   { id: "orders", label: "Orders", roles: ADMIN, el: Orders },
   { id: "menu", label: "Menu", roles: ADMIN, el: Menu },

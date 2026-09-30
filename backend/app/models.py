@@ -134,6 +134,8 @@ class Booking(TS, Base):
     refund_pence: Mapped[int] = mapped_column(Integer, default=0)  # due back after a cancellation
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, confirmed, seated, cancelled, no_show
     notes: Mapped[str] = mapped_column(Text, default="")
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # table is held until then
+    table: Mapped[DiningTable | None] = relationship()
 
 
 class TableSession(TS, Base):
@@ -231,6 +233,7 @@ class Notification(TS, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), index=True)
+    booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id"), index=True)
     kind: Mapped[str] = mapped_column(String(40))  # status, delay, review_prompt, staff_alert
     title: Mapped[str] = mapped_column(String(120))
     body: Mapped[str] = mapped_column(String(500))

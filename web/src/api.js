@@ -39,15 +39,17 @@ export const myOrderTokens = {
 };
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, detail) {
     super(message);
     this.status = status;
+    this.detail = detail; // the server's detail (can be an object, e.g. alternative booking times)
   }
 }
 
 function errorText(body, status) {
   const d = body && body.detail;
   if (typeof d === "string") return d.charAt(0).toUpperCase() + d.slice(1);
+  if (d && typeof d === "object" && d.message) return d.message;
   if (Array.isArray(d)) return d.map((e) => e.msg.replace(/^Value error, /, "")).join("; ");
   return `Something went wrong (${status}). Please try again.`;
 }
@@ -89,7 +91,7 @@ async function request(path, { method = "GET", body, query, headers: extra } = {
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && token) auth.set(null);
-    throw new ApiError(res.status, errorText(data, res.status));
+    throw new ApiError(res.status, errorText(data, res.status), data && data.detail);
   }
   return data;
 }

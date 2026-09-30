@@ -190,3 +190,44 @@ def test_deposit_and_refund():
     assert booking.refund_on_cancel(2000, at(19), at(19) - timedelta(hours=2), s) == 0
     assert booking.amount_due_at_end(5400, 2000) == 3400
     assert booking.amount_due_at_end(1500, 2000) == 0
+
+
+# --- table bookings: no clashes ---------------------------------------------------
+
+T = [booking.TableInfo(1, "1", 2), booking.TableInfo(2, "2", 4), booking.TableInfo(3, "3", 4), booking.TableInfo(4, "10", 6)]
+
+
+def test_smallest_fitting_table_first():
+    free = booking.free_tables(T, [], at(19), 90, 3)
+    assert [t.number for t in free] == ["2", "3", "10"]
+
+
+def test_booked_table_is_not_offered_at_overlapping_times():
+    taken = [booking.Taken(2, at(19), at(20, 30))]
+    assert [t.number for t in booking.free_tables(T, taken, at(19, 30), 90, 3)] == ["3", "10"]
+    assert [t.number for t in booking.free_tables(T, taken, at(18), 90, 3)] == ["3", "10"]  # would run into 7pm
+    assert [t.number for t in booking.free_tables(T, taken, at(17, 30), 90, 3)] == ["2", "3", "10"]  # ends as 7pm starts
+    assert [t.number for t in booking.free_tables(T, taken, at(20, 30), 90, 3)] == ["2", "3", "10"]  # starts as it ends
+
+
+def test_full_time_offers_three_nearest_other_times():
+    s = RestaurantSettings()
+    taken = [booking.Taken(t.id, at(19), at(20, 30)) for t in T]  # every table 7-8:30pm
+    avail = booking.availability(DAY, s, T, taken, 2, now=at(10))
+    by_time = dict(avail)
+    assert by_time[at(19)] == [] and by_time[at(18)] == []  # 6pm would overlap
+    assert booking.alternatives(avail, at(19)) == [at(17), at(17, 30), at(20, 30)]
+
+
+def test_booking_times_respect_hours_and_lead_time():
+    s = RestaurantSettings()
+    times = booking.booking_times(DAY, s, now=at(13))
+    assert times[0] == at(13, 30) and times[-1] == at(21, 30)
+
+
+def test_evening_shows_no_morning_times_and_past_days_are_empty():
+    s = RestaurantSettings()
+    times = booking.booking_times(DAY, s, now=at(20))  # 8pm: only 8:30pm onwards (last seating 9:30pm)
+    assert times == [at(20, 30), at(21), at(21, 30)]
+    assert booking.booking_times(DAY, s, now=at(21, 10)) == []  # too late for today
+    assert booking.booking_times(DAY - timedelta(days=1), s, now=at(9)) == []  # yesterday
