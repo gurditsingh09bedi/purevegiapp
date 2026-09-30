@@ -142,7 +142,8 @@ def test_table_bookings_never_clash(client):
     r = c.post("/bookings", json={"name": "Late", "phone": "07700900111", "guests": 4, "booking_at": seven})
     assert r.status_code == 409
     alts = r.json()["detail"]["alternatives"]
-    assert len(alts) == 3 and all(a[11:16] not in {"17:30", "18:00", "18:30", "19:00", "19:30", "20:00"} for a in alts)
+    # A 90-minute booking at 7pm blocks starts from 5:31pm to 8:29pm; 5:30pm ends exactly at 7pm, so it is free.
+    assert [a[11:16] for a in alts] == ["17:00", "17:30", "20:30"]
     after = c.get("/bookings/availability", params={"day": "2026-10-02", "guests": 4}).json()
     full = [a for a in after if a["tables_left"] == 0]
     assert full  # 6pm-8pm show as full
