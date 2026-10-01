@@ -3,18 +3,21 @@
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import jwt
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from ..config import AppConfig
 from ..db import get_db
-from ..deps import current_user, kitchen_staff, now, optional_user, settings
+from ..deps import config, current_user, kitchen_staff, now, optional_user, settings
 from ..domain import booking as rules
 from ..domain.order_flow import Message, Status
 from ..domain.settings import RestaurantSettings
-from ..models import Booking, DiningTable, TableSession, User
+from ..models import STAFF_ROLES, Booking, DiningTable, TableSession, User
 from ..realtime import Outbox, get_outbox
-from ..schemas import BillOut, BookingIn, BookingOut, BookingStatusIn, BookingTimeOut, FreeTable
+from ..schemas import BillOut, BookingIn, BookingMessageIn, BookingOut, BookingStatusIn, BookingTimeOut, FreeTable
+from ..security import create_token, decode_token
 from ..services import notify
 from ..services import orders as svc
 from .orders import order_out
@@ -54,6 +57,26 @@ def booking_out(b: Booking) -> BookingOut:
     return out
 
 
+def _booking_token(b: Booking, cfg: AppConfig) -> str:
+    return create_token(str(b.id), cfg.jwt_secret, minutes=60 * 24 * 60, kind="booking")
+
+
+def _link(b: Booking, cfg: AppConfig) -> str:
+    """A link to the booking's live status page, when the website address is set."""
+    return f" Details: {cfg.site_url.rstrip('/')}/booking/{b.id}?t={_booking_token(b, cfg)}" if cfg.site_url else ""
+
+
+def _can_see(b: Booking, user: User | None, token: str | None, cfg: AppConfig) -> bool:
+    if user and (user.role in STAFF_ROLES or b.user_id == user.id):
+        return True
+    if token:
+        try:
+            return decode_token(token, cfg.jwt_secret, kind="booking")["sub"] == str(b.id)
+        except jwt.PyJWTError:
+            return False
+    return False
+
+
 def _when_text(dt: datetime, s: RestaurantSettings) -> str:
     local = dt.astimezone(ZoneInfo(s.timezone))
     return local.strftime("%a %-d %b, ") + local.strftime("%-I:%M%p").lower().replace(":00", "")
@@ -74,7 +97,9 @@ def booking_availability(day: date, guests: int = Query(2, ge=1, le=50), db: Ses
 @router.post("/bookings", response_model=BookingOut, status_code=201)
 def create_booking(body: BookingIn, db: Session = Depends(get_db), user: User | None = Depends(optional_user),
                    s: RestaurantSettings = Depends(settings), outbox: Outbox = Depends(get_outbox),
-                   at: datetime = Depends(now)):
+                   cfg: AppConfig = Depends(config), at: datetime = Depends(now)):
+    """A booking request. It holds the table straight away (so nobody else can take it) and waits
+    for staff to accept or decline, unless the owner switched on auto-confirm."""
     if not s.bookings_enabled:
         raise HTTPException(409, "online booking is closed")
     when = body.booking_at if body.booking_at.tzinfo else body.booking_at.replace(tzinfo=ZoneInfo(s.timezone))
@@ -102,19 +127,35 @@ def create_booking(body: BookingIn, db: Session = Depends(get_db), user: User | 
             "alternatives": [a.isoformat() for a in alts],
         })
 
-    b = Booking(user_id=user.id if user else None, name=body.name.strip(), phone=body.phone.strip(), guests=body.guests,
+    by_staff = bool(user and user.role in STAFF_ROLES)  # a phone booking taken by staff needs no second check
+    b = Booking(user_id=user.id if user and not by_staff else None, name=body.name.strip(), phone=body.phone.strip(),
+                guests=body.guests,
                 booking_at=when.astimezone(UTC), ends_at=(when + timedelta(minutes=s.booking_duration_minutes)).astimezone(UTC),
-                table_id=chosen.id, deposit_pence=deposit, notes=body.notes, status="pending" if deposit else "confirmed")
+                table_id=chosen.id, deposit_pence=deposit, notes=body.notes.strip(),
+                status="confirmed" if (by_staff or s.booking_auto_confirm) and not deposit else "pending")
     db.add(b)
     db.flush()
-    who = f"Table {chosen.number} for {b.guests}, {_when_text(when, s)}. Booking #{b.id}."
+    who = f"Table for {b.guests}, {_when_text(when, s)}. Booking #{b.id}."
     if b.status == "confirmed":
-        notify.queue_booking(db, b, Message("Table booked", f"{who} See you soon at {s.name}!"))
+        notify.queue_booking(db, b, Message("Table booked", f"{who} See you soon at {s.name}!{_link(b, cfg)}"))
     else:
-        notify.queue_booking(db, b, Message("Booking request received", f"{who} We'll confirm shortly."))
+        notify.queue_booking(db, b, Message("Booking request sent",
+                                            f"{who} {s.name} will confirm shortly and we'll text you.{_link(b, cfg)}"))
     outbox.add("kitchen", {"event": "booking_created", "booking_id": b.id, "status": b.status})
     db.commit()
     db.refresh(b)
+    out = booking_out(b)
+    out.view_token = _booking_token(b, cfg)
+    return out
+
+
+@router.get("/bookings/{booking_id}", response_model=BookingOut)
+def get_booking(booking_id: int, db: Session = Depends(get_db), user: User | None = Depends(optional_user),
+                cfg: AppConfig = Depends(config), x_booking_token: str | None = Header(None)):
+    """The customer's live status page: request, confirmed or declined, plus any message from staff."""
+    b = db.get(Booking, booking_id)
+    if b is None or not _can_see(b, user, x_booking_token, cfg):
+        raise HTTPException(404, "booking not found")
     return booking_out(b)
 
 
@@ -124,24 +165,56 @@ def my_bookings(db: Session = Depends(get_db), user: User = Depends(current_user
     return [booking_out(b) for b in rows]
 
 
+# Which answers staff can give from each state.
+_ALLOWED = {"confirmed": {"pending"}, "declined": {"pending"}, "cancelled": {"pending", "confirmed"}, "no_show": {"confirmed"}}
+
+
 @router.post("/bookings/{booking_id}/status", response_model=BookingOut)
 def set_booking_status(booking_id: int, body: BookingStatusIn, db: Session = Depends(get_db),
                        _: User = Depends(kitchen_staff), s: RestaurantSettings = Depends(settings),
-                       outbox: Outbox = Depends(get_outbox)):
-    """Staff confirm a request, cancel it, or mark a no-show (frees the table)."""
+                       outbox: Outbox = Depends(get_outbox), cfg: AppConfig = Depends(config)):
+    """Staff accept or decline a request (with an optional message), cancel, or mark a no-show.
+    Declined, cancelled and no-show free the table."""
     b = db.get(Booking, booking_id)
     if b is None:
         raise HTTPException(404, "booking not found")
-    if b.status in {"cancelled", "no_show", "seated"}:
+    if b.status not in _ALLOWED[body.status]:
         raise HTTPException(409, f"this booking is already {b.status.replace('_', ' ')}")
     b.status = body.status
-    table = f"Table {b.table.number} for {b.guests}, " if b.table else ""
+    note = body.message.strip()
+    if note:
+        b.staff_message = note
+    extra = f" Message from {s.name}: {note}" if note else ""
+    table = f"Table {b.table.number} for {b.guests}, " if b.table else f"Table for {b.guests}, "
     when = _when_text(svc.aware(b.booking_at), s)
     if body.status == "confirmed":
-        notify.queue_booking(db, b, Message("Booking confirmed", f"{table}{when}. Booking #{b.id}. See you soon!"))
+        notify.queue_booking(db, b, Message("Booking confirmed",
+                                            f"Confirmed! {table}{when}. Booking #{b.id}.{extra} See you soon!{_link(b, cfg)}"))
+    elif body.status == "declined":
+        notify.queue_booking(db, b, Message("Booking not accepted",
+                                            f"Sorry, we can't take your booking for {when}.{extra} "
+                                            f"Please pick another time or call {s.phone}.{_link(b, cfg)}"))
     elif body.status == "cancelled":
-        text_ = f"Your booking for {when} is cancelled. Questions? Call {s.phone}."
-        notify.queue_booking(db, b, Message("Booking cancelled", text_))
+        notify.queue_booking(db, b, Message("Booking cancelled",
+                                            f"Your booking for {when} is cancelled.{extra} Questions? Call {s.phone}."))
+    outbox.add("kitchen", {"event": "booking_updated", "booking_id": b.id, "status": b.status})
+    db.commit()
+    return booking_out(b)
+
+
+@router.post("/bookings/{booking_id}/message", response_model=BookingOut)
+def message_customer(booking_id: int, body: BookingMessageIn, db: Session = Depends(get_db),
+                     _: User = Depends(kitchen_staff), s: RestaurantSettings = Depends(settings),
+                     outbox: Outbox = Depends(get_outbox), cfg: AppConfig = Depends(config)):
+    """Text the customer about their booking, e.g. "Yes, we can arrange a birthday cake"."""
+    b = db.get(Booking, booking_id)
+    if b is None:
+        raise HTTPException(404, "booking not found")
+    if b.status not in {"pending", "confirmed", "seated"}:
+        raise HTTPException(409, f"this booking is {b.status.replace('_', ' ')}")
+    b.staff_message = body.message.strip()
+    notify.queue_booking(db, b, Message(f"Message from {s.name}",
+                                        f"Booking #{b.id}: {b.staff_message}{_link(b, cfg)}"), kind="booking_message")
     outbox.add("kitchen", {"event": "booking_updated", "booking_id": b.id, "status": b.status})
     db.commit()
     return booking_out(b)
@@ -149,15 +222,19 @@ def set_booking_status(booking_id: int, body: BookingStatusIn, db: Session = Dep
 
 @router.post("/bookings/{booking_id}/cancel", response_model=BookingOut)
 def cancel_booking(booking_id: int, db: Session = Depends(get_db), user: User | None = Depends(optional_user),
-                   s: RestaurantSettings = Depends(settings), at: datetime = Depends(now)):
+                   s: RestaurantSettings = Depends(settings), at: datetime = Depends(now),
+                   outbox: Outbox = Depends(get_outbox), cfg: AppConfig = Depends(config),
+                   x_booking_token: str | None = Header(None)):
+    """The customer cancels their own booking (signed in, or with the link from their text)."""
     b = db.get(Booking, booking_id)
-    if b is None or (b.user_id and (user is None or user.id != b.user_id)):
+    if b is None or not _can_see(b, user, x_booking_token, cfg):
         raise HTTPException(404, "booking not found")
-    if b.status in {"cancelled", "seated", "no_show"}:
+    if b.status not in {"pending", "confirmed"}:
         raise HTTPException(409, f"this booking is already {b.status.replace('_', ' ')}")
     paid = b.deposit_pence if b.deposit_paid else 0
     b.refund_pence = rules.refund_on_cancel(paid, svc.aware(b.booking_at), at, s)
     b.status = "cancelled"
+    outbox.add("kitchen", {"event": "booking_updated", "booking_id": b.id, "status": b.status})
     db.commit()
     return booking_out(b)
 
@@ -173,6 +250,9 @@ def seat_booking(booking_id: int, table_id: int | None = None, db: Session = Dep
     table = db.get(DiningTable, table_id) if table_id else None
     if b is None or table is None:
         raise HTTPException(404, "booking or table not found")
+    if b.status != "confirmed":
+        why = "accept the booking first" if b.status == "pending" else f"this booking is {b.status.replace('_', ' ')}"
+        raise HTTPException(409, why)
     if db.scalar(select(TableSession).where(TableSession.table_id == table_id, TableSession.closed_at.is_(None))):
         raise HTTPException(409, f"table {table.number} still has an open tab")
     ts = TableSession(table_id=table_id, booking_id=b.id)
@@ -212,7 +292,7 @@ def table_paid(session_id: int, db: Session = Depends(get_db), _: User = Depends
 @router.get("/bookings", response_model=list[BookingOut])
 def list_bookings(day: date | None = None, db: Session = Depends(get_db), _: User = Depends(kitchen_staff),
                   s: RestaurantSettings = Depends(settings)):
-    q = select(Booking).where(Booking.status != "cancelled").order_by(Booking.booking_at)
+    q = select(Booking).order_by(Booking.booking_at)
     if day:
         start = datetime.combine(day, time(), ZoneInfo(s.timezone)).astimezone(UTC)
         q = q.where(Booking.booking_at >= start, Booking.booking_at < start + timedelta(days=1))

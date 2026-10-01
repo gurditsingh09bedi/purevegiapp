@@ -286,6 +286,8 @@ class BookingOut(ORM):
     refund_pence: int
     status: str
     table_id: int | None
+    staff_message: str | None = None
+    view_token: str | None = None  # lets a guest follow their request without an account
 
 
 class FreeTable(BaseModel):
@@ -301,7 +303,12 @@ class BookingTimeOut(BaseModel):
 
 
 class BookingStatusIn(BaseModel):
-    status: str = Field(pattern="^(confirmed|cancelled|no_show)$")
+    status: str = Field(pattern="^(confirmed|declined|cancelled|no_show)$")
+    message: str = Field("", max_length=500)  # optional note to the customer, e.g. "Yes, we'll have a cake ready"
+
+
+class BookingMessageIn(BaseModel):
+    message: str = Field(min_length=1, max_length=500)
 
 
 class BillOut(BaseModel):

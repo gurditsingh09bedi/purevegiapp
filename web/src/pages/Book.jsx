@@ -2,9 +2,9 @@
 // "Full". Picking a time shows the best free tables; if someone takes the last one first,
 // the server refuses and we offer the three nearest free times instead. No double bookings.
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
-import { dayAndTime, money } from "../format.js";
-import { Link, useApp, useLoad } from "../state.jsx";
+import { api, myBookingTokens } from "../api.js";
+import { money } from "../format.js";
+import { navigate, useApp, useLoad } from "../state.jsx";
 
 const ukDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(d); // YYYY-MM-DD
 const clock12 = (iso) =>
@@ -21,7 +21,6 @@ export default function Book() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [alternatives, setAlternatives] = useState([]);
-  const [done, setDone] = useState(null);
 
   useEffect(() => { if (user) setF((x) => ({ ...x, name: x.name || user.name, phone: x.phone || user.phone || "" })); }, [user]);
 
@@ -52,8 +51,8 @@ export default function Book() {
         method: "POST",
         body: { name: f.name.trim(), phone: f.phone.trim(), guests: Number(guests), booking_at: time.start, table_id: tableId, notes: f.notes.trim() },
       });
-      setDone(b);
-      window.scrollTo({ top: 0 });
+      myBookingTokens.add(b.id, b.view_token);
+      navigate(`/booking/${b.id}`); // live status: request sent -> confirmed or declined
     } catch (err) {
       setError(err.message);
       if (err.status === 409 && err.detail?.alternatives) {
@@ -66,29 +65,6 @@ export default function Book() {
     }
   }
 
-  if (done) {
-    const confirmed = done.status === "confirmed";
-    return (
-      <div className="page narrow">
-        <div className={`booked-card ${confirmed ? "ok" : "wait"}`} role="status">
-          <div className="booked-icon" aria-hidden="true">{confirmed ? "✓" : "…"}</div>
-          <h1>{confirmed ? "Your table is booked!" : "Booking request sent"}</h1>
-          <p className="lede">
-            <b>Table {done.table_number}</b> for {done.guests} · {dayAndTime(done.booking_at)}
-          </p>
-          <p className="booking-ref">Booking number <b>#{done.id}</b></p>
-          <p>We've sent a text to {done.phone}.{confirmed ? "" : " We'll confirm it shortly."}</p>
-          {done.deposit_pence > 0 && <p className="notice">A deposit of {money(done.deposit_pence)} secures your table and comes off your bill. We'll contact you to take it.</p>}
-          <p className="muted">When you arrive, tell us your name or booking number, then scan the QR code on your table to order from your phone. Need to change it? Call <a href="tel:01215547949">0121 554 7949</a>.</p>
-          <div className="hero-ctas">
-            <Link to="/" className="btn primary">See the menu</Link>
-            <button className="btn ghost" onClick={() => { setDone(null); setTime(null); avail.reload(); }}>Make another booking</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (restaurant && !restaurant.bookings_enabled) {
     return <div className="page narrow"><h1>Book a table</h1><p>Online booking is closed right now. Please call <a href="tel:01215547949">0121 554 7949</a>.</p></div>;
   }
@@ -97,7 +73,7 @@ export default function Book() {
     <form className="page narrow" onSubmit={submit}>
       <p className="eyebrow">Dine in</p>
       <h1>Book a table</h1>
-      <p className="muted">Pick a day and a time with free tables. You'll get your table number straight away.</p>
+      <p className="muted">Pick a day and a time with free tables and send your request. Pure Vegi will confirm it and we'll text you.</p>
 
       <section className="panel">
         <div className="row">
@@ -173,10 +149,10 @@ export default function Book() {
             <label className="field grow"><span className="field-label">Mobile</span><input type="tel" value={f.phone} onChange={set("phone")} required minLength={10} autoComplete="tel" /></label>
           </div>
           <label className="field"><span className="field-label">Anything we should know? (optional)</span>
-            <input value={f.notes} onChange={set("notes")} placeholder="High chair, birthday, allergies…" /></label>
+            <textarea rows={3} maxLength={500} value={f.notes} onChange={set("notes")} placeholder="Birthday cake, high chair, allergies… the restaurant will reply" /></label>
           {deposit > 0 && <p className="muted">Deposit: {money(deposit)}, taken off your final bill.</p>}
           {error && !alternatives.length && <p className="error" role="alert">{error}</p>}
-          <button className="btn primary wide big" disabled={busy}>{busy ? "Booking…" : `Book for ${guests} at ${clock12(time.start)}`}</button>
+          <button className="btn primary wide big" disabled={busy}>{busy ? "Sending…" : `Request a table for ${guests} at ${clock12(time.start)}`}</button>
         </section>
       )}
     </form>

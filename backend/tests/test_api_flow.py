@@ -136,7 +136,7 @@ def test_table_bookings_never_clash(client):
     for i in range(10):
         r = c.post("/bookings", json={"name": f"Guest {i}", "phone": "07700900111", "guests": 4, "booking_at": seven})
         assert r.status_code == 201, r.text
-        assert r.json()["status"] == "confirmed"
+        assert r.json()["status"] == "pending"  # a request until staff accept it, but the table is already held
         tables.add(r.json()["table_number"])
     assert len(tables) == 10  # every booking got its own table
     r = c.post("/bookings", json={"name": "Late", "phone": "07700900111", "guests": 4, "booking_at": seven})
@@ -151,3 +151,76 @@ def test_table_bookings_never_clash(client):
     owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
     listed = c.get("/bookings", params={"day": "2026-10-02"}, headers=owner).json()
     assert len(listed) == 10 and listed[0]["table_number"]
+
+
+def _texts(booking_id):
+    from app import db
+    from app.models import Notification
+
+    with db._SessionLocal() as s:
+        return [n.body for n in s.query(Notification).filter(Notification.booking_id == booking_id).order_by(Notification.id)]
+
+
+def test_booking_request_waits_for_staff_then_customer_is_told(client):
+    """Request -> staff accept with a note about the special request -> the customer sees it and is texted."""
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    body = {"name": "Gurdit", "phone": "07778233556", "guests": 4, "booking_at": "2026-10-02T17:00:00+01:00",
+            "notes": "Parents visiting from India, could you arrange a cake? I'll pay extra"}
+    r = c.post("/bookings", json=body)
+    assert r.status_code == 201, r.text
+    b = r.json()
+    assert b["status"] == "pending" and b["view_token"]
+    assert "will confirm shortly" in _texts(b["id"])[0]
+    guest = {"X-Booking-Token": b["view_token"]}
+
+    assert c.get(f"/bookings/{b['id']}").status_code == 404  # no token, no peeking
+    assert c.get(f"/bookings/{b['id']}", headers={"X-Booking-Token": "nope"}).status_code == 404
+    assert c.get(f"/bookings/{b['id']}", headers=guest).json()["status"] == "pending"
+    assert c.post(f"/bookings/{b['id']}/seat", headers=owner).status_code == 409  # accept first
+
+    note = "Yes, we'll have a cake ready for your parents. £15, paid on the day."
+    r = c.post(f"/bookings/{b['id']}/status", headers=owner, json={"status": "confirmed", "message": note})
+    assert r.status_code == 200, r.text
+    seen = c.get(f"/bookings/{b['id']}", headers=guest).json()
+    assert seen["status"] == "confirmed" and seen["staff_message"] == note
+    assert note in _texts(b["id"])[-1] and "Confirmed!" in _texts(b["id"])[-1]
+    # Can't answer twice.
+    assert c.post(f"/bookings/{b['id']}/status", headers=owner, json={"status": "declined"}).status_code == 409
+
+    r = c.post(f"/bookings/{b['id']}/message", headers=owner, json={"message": "Candles included!"})
+    assert r.status_code == 200 and r.json()["staff_message"] == "Candles included!"
+    assert "Candles included!" in _texts(b["id"])[-1]
+    assert c.post(f"/bookings/{b['id']}/seat", headers=owner).status_code == 201
+
+
+def test_declined_request_frees_the_table_and_auto_confirm_switch(client):
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    seven = "2026-10-02T19:00:00+01:00"
+    ids = []
+    for i in range(10):
+        r = c.post("/bookings", json={"name": f"G{i}", "phone": "07700900111", "guests": 4, "booking_at": seven})
+        ids.append(r.json()["id"])
+    assert c.post("/bookings", json={"name": "X", "phone": "07700900111", "guests": 4, "booking_at": seven}).status_code == 409
+    r = c.post(f"/bookings/{ids[0]}/status", headers=owner, 
+                 json={"status": "declined", "message": "Kitchen closed for a private event."})
+    assert r.status_code == 200 and r.json()["status"] == "declined"
+    assert "can't take your booking" in _texts(ids[0])[-1] and "private event" in _texts(ids[0])[-1]
+    r = c.post("/bookings", json={"name": "X", "phone": "07700900111", "guests": 4, "booking_at": seven})
+    assert r.status_code == 201  # the declined request's table is free again
+
+    assert c.patch("/admin/settings", headers=owner, json={"booking_auto_confirm": True}).status_code == 200
+    r = c.post("/bookings", json={"name": "Y", "phone": "07700900111", "guests": 2, "booking_at": "2026-10-02T13:30:00+01:00"})
+    assert r.status_code == 201 and r.json()["status"] == "confirmed"
+
+    # The customer can cancel with the link from their text.
+    tok = {"X-Booking-Token": r.json()["view_token"]}
+    assert c.post(f"/bookings/{r.json()['id']}/cancel", headers=tok).json()["status"] == "cancelled"
+
+
+def test_phone_booking_by_staff_is_confirmed_straight_away(client):
+    owner = login(client, "owner@purevegi.co.uk", "owner-pass-123")
+    r = client.post("/bookings", headers=owner, json={"name": "Phone guest", "phone": "07700900222", "guests": 2,
+                                                       "booking_at": "2026-10-02T18:00:00+01:00"})
+    assert r.status_code == 201 and r.json()["status"] == "confirmed"

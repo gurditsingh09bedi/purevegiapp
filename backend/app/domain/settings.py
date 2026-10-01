@@ -74,6 +74,7 @@ class RestaurantSettings(BaseModel):
 
     # --- Dine-in booking ------------------------------------------------------
     bookings_enabled: bool = True
+    booking_auto_confirm: bool = False  # agreed: staff accept or decline each request
     booking_deposit_pence: int = Field(0, ge=0)  # owner to set
     booking_deposit_per_guest: bool = False
     booking_refund_hours: int = Field(24, ge=0)  # full refund if cancelled this early

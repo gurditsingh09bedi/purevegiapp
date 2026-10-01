@@ -132,9 +132,11 @@ class Booking(TS, Base):
     deposit_pence: Mapped[int] = mapped_column(Integer, default=0)
     deposit_paid: Mapped[bool] = mapped_column(Boolean, default=False)
     refund_pence: Mapped[int] = mapped_column(Integer, default=0)  # due back after a cancellation
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, confirmed, seated, cancelled, no_show
+    # pending (request) -> confirmed or declined; confirmed -> seated, no_show or cancelled
+    status: Mapped[str] = mapped_column(String(20), default="pending")
     notes: Mapped[str] = mapped_column(Text, default="")
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # table is held until then
+    staff_message: Mapped[str | None] = mapped_column(Text)  # last message the restaurant sent the customer
     table: Mapped[DiningTable | None] = relationship()
 
 

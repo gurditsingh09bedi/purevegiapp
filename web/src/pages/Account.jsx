@@ -66,7 +66,8 @@ function SignIn({ onUser }) {
 function MyOrders({ user, logout }) {
   const orders = useLoad(() => api("/me/orders"));
   const bookings = useLoad(() => api("/me/bookings"));
-  const upcoming = (bookings.data || []).filter((b) => ["pending", "confirmed"].includes(b.status) && new Date(b.booking_at) > new Date());
+  const upcoming = (bookings.data || []).filter((b) => ["pending", "confirmed", "declined"].includes(b.status) && new Date(b.booking_at) > new Date());
+  const BOOKING_LABEL = { pending: "Waiting for confirmation", confirmed: "Confirmed", declined: "Not accepted" };
   return (
     <div className="page narrow">
       <h1>Hi {user.name.split(" ")[0]}</h1>
@@ -77,11 +78,11 @@ function MyOrders({ user, logout }) {
           <ul className="order-list">
             {upcoming.map((b) => (
               <li key={b.id}>
-                <div className="booking-line">
-                  <span><b>#{b.id}</b> · Table {b.table_number} for {b.guests}</span>
-                  <span>{dayAndTime(b.booking_at)}</span>
-                  <span className="pill">{b.status === "confirmed" ? "Confirmed" : "Waiting for confirmation"}</span>
-                </div>
+                <Link to={`/booking/${b.id}`} className="booking-line">
+                  <span><b>#{b.id}</b> · {b.status === "confirmed" ? `Table ${b.table_number}` : "Table"} for {b.guests} · {dayAndTime(b.booking_at)}</span>
+                  {b.staff_message && <span className="muted">Pure Vegi: “{b.staff_message}”</span>}
+                  <span className={`pill b-${b.status}`}>{BOOKING_LABEL[b.status]}</span>
+                </Link>
               </li>
             ))}
           </ul>

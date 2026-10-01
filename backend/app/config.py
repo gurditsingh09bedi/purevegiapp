@@ -24,6 +24,9 @@ class AppConfig(BaseSettings):
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
 
+    # The customer website's address, for links in texts (e.g. https://purevegi.co.uk). Optional.
+    site_url: str = ""
+
     # Lets staff mark test orders as paid without Stripe. Never on in production.
     dev_payments: bool = True
 

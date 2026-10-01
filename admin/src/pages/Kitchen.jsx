@@ -59,7 +59,7 @@ export default function Kitchen() {
     const clockTick = setInterval(() => setNow(Date.now()), 30000);
     const stop = kitchenSocket((ev) => {
       if (ev.event === "online_orders_paused") setInfo((i) => (i ? { ...i, online_orders_paused: ev.paused } : i));
-      if (ev.event === "booking_created") { beep(); toast("New table booking: see the Bookings page"); return; }
+      if (ev.event === "booking_created") { beep(); toast(ev.status === "pending" ? "New table booking request: answer it on the Bookings page" : "New table booking"); return; }
       load();
     });
     return () => { clearInterval(poll); clearInterval(clockTick); stop(); };

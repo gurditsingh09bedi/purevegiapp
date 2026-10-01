@@ -1,6 +1,7 @@
 import { BusyOverlay, CartDrawer, Footer, Header } from "./components.jsx";
 import Account from "./pages/Account.jsx";
 import Book from "./pages/Book.jsx";
+import BookingStatus from "./pages/BookingStatus.jsx";
 import Checkout from "./pages/Checkout.jsx";
 import Home from "./pages/Home.jsx";
 import { TableCheckout, TableMenu } from "./pages/Table.jsx";
@@ -18,6 +19,7 @@ function Routes() {
   else if (path === "/t/checkout") page = <TableCheckout />;
   else if ((m = path.match(/^\/t\/([^/]+)$/))) page = <TableMenu key={m[1]} token={decodeURIComponent(m[1])} />;
   else if ((m = path.match(/^\/order\/(\d+)$/))) page = <Track key={m[1]} id={Number(m[1])} />;
+  else if ((m = path.match(/^\/booking\/(\d+)$/))) page = <BookingStatus key={m[1]} id={Number(m[1])} />;
   else page = <div className="page narrow"><h1>Page not found</h1><Link to="/" className="btn primary">Go to the menu</Link></div>;
 
   return (

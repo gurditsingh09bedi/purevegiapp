@@ -96,6 +96,21 @@ async function request(path, { method = "GET", body, query, headers: extra } = {
   return data;
 }
 
+// Table bookings this browser made: {id: viewToken}, so guests can follow their request.
+export const myBookingTokens = {
+  get: (id) => store.get("pv_booking_tokens", {})[id],
+  add(id, token) {
+    const all = store.get("pv_booking_tokens", {});
+    all[id] = token;
+    store.set("pv_booking_tokens", all);
+  },
+};
+
+export function bookingHeaders(id) {
+  const t = myBookingTokens.get(id);
+  return t ? { "X-Booking-Token": t } : {};
+}
+
 export function orderHeaders(id) {
   const t = myOrderTokens.get(id);
   return t ? { "X-Order-Token": t } : {};

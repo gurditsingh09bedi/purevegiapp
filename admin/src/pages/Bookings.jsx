@@ -1,12 +1,25 @@
-// Table bookings for front of house: the day's list with table numbers, a beep when a new
-// booking arrives, Confirm / Seat / No-show / Cancel, and a form for bookings taken by phone.
+// Table bookings for front of house. Online bookings arrive as requests (table already held):
+// staff Accept or Decline them, with an optional message that is texted to the customer
+// (e.g. "Yes, we'll have a cake ready"). Also Message, Seat, No-show, Cancel, and phone bookings.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, kitchenSocket } from "../api.js";
 import { clock } from "../format.js";
 import { attempt, Field, PageHead, toast } from "../ui.jsx";
 
 const ukDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(d);
-const STATUS = { pending: "Needs confirming", confirmed: "Confirmed", seated: "Seated", no_show: "No-show", cancelled: "Cancelled" };
+const STATUS = { pending: "New request", confirmed: "Confirmed", declined: "Declined", seated: "Seated", no_show: "No-show", cancelled: "Cancelled" };
+const QUICK = {
+  confirmed: ["Yes, we can arrange that for you.", "We'll have it ready when you arrive.", "There's a small extra charge for this, paid on the day."],
+  declined: ["Sorry, we're fully booked at that time.", "For a group this size please call us so we can plan it.", "We're closed for a private event that evening."],
+  message: ["Yes, we can arrange that for you.", "Could you call us to talk about your request?", "Running 10 minutes behind, your table will be ready shortly."],
+  cancelled: ["Sorry, we've had to close early today."],
+};
+const ACTION = {
+  confirmed: { title: "Accept booking", button: "Accept & text customer", path: "status", label: "Message to the customer (optional)" },
+  declined: { title: "Decline booking", button: "Decline & text customer", path: "status", label: "Reason (optional, sent to the customer)" },
+  cancelled: { title: "Cancel booking", button: "Cancel & text customer", path: "status", label: "Reason (optional, sent to the customer)" },
+  message: { title: "Message customer", button: "Send text", path: "message", label: "Message" },
+};
 
 function chime() {
   try {
@@ -32,6 +45,7 @@ export default function Bookings() {
   const [error, setError] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [reply, setReply] = useState(null); // {b, action}
   const known = useRef(null);
 
   const load = useCallback(async () => {
@@ -40,7 +54,7 @@ export default function Bookings() {
       const ids = new Set(rows.map((b) => b.id));
       if (known.current && day === ukDate(new Date()) && rows.some((b) => !known.current.has(b.id))) {
         chime();
-        toast("New table booking");
+        toast("New table booking request");
       }
       known.current = ids;
       setList(rows);
@@ -63,20 +77,30 @@ export default function Bookings() {
     if (ok) load();
   }
 
+  async function sendReply(message) {
+    const { b, action } = reply;
+    const a = ACTION[action];
+    const body = a.path === "status" ? { status: action, message } : { message };
+    const done = { confirmed: `#${b.id} accepted, customer texted`, declined: `#${b.id} declined, customer texted`,
+      cancelled: `#${b.id} cancelled, customer texted`, message: `Message sent to ${b.name}` }[action];
+    const ok = await attempt(() => api(`/bookings/${b.id}/${a.path}`, { method: "POST", body }), done);
+    if (ok) { setReply(null); load(); }
+  }
+
   async function seat(b) {
     const ok = await attempt(() => api(`/bookings/${b.id}/seat`, { method: "POST" }), `${b.name} seated at table ${b.table_number}`);
     if (ok) load();
   }
 
-  const visible = (list || []).filter((b) => showAll || !["cancelled", "no_show"].includes(b.status));
-  const guests = visible.filter((b) => b.status !== "cancelled").reduce((n, b) => n + b.guests, 0);
+  const visible = (list || []).filter((b) => showAll || !["cancelled", "no_show", "declined"].includes(b.status));
+  const guests = visible.filter((b) => ["pending", "confirmed", "seated"].includes(b.status)).reduce((n, b) => n + b.guests, 0);
   const pending = (list || []).filter((b) => b.status === "pending").length;
 
   return (
     <>
-      <PageHead title="Table bookings" sub={list ? `${visible.length} booking${visible.length === 1 ? "" : "s"} · ${guests} guests${pending ? ` · ${pending} to confirm` : ""}` : ""}>
+      <PageHead title="Table bookings" sub={list ? `${visible.length} booking${visible.length === 1 ? "" : "s"} · ${guests} guests${pending ? ` · ${pending} waiting for an answer` : ""}` : ""}>
         <input type="date" value={day} onChange={(e) => setDay(e.target.value || ukDate(new Date()))} aria-label="Day" />
-        <button className="btn ghost" onClick={() => setShowAll((x) => !x)}>{showAll ? "Hide cancelled" : "Show cancelled"}</button>
+        <button className="btn ghost" onClick={() => setShowAll((x) => !x)}>{showAll ? "Hide cancelled & declined" : "Show cancelled & declined"}</button>
         <button className="btn primary" onClick={() => setAdding(true)}>Add phone booking</button>
       </PageHead>
 
@@ -89,21 +113,70 @@ export default function Bookings() {
             <div className="b-time">{clock(b.booking_at)}<span>to {clock(b.ends_at)}</span></div>
             <div className="b-main">
               <b>{b.name}</b> · {b.guests} guest{b.guests === 1 ? "" : "s"} · <b>Table {b.table_number || "?"}</b>
-              <div className="muted small">#{b.id} · <a href={`tel:${b.phone.replace(/\s/g, "")}`}>{b.phone}</a>{b.notes ? ` · “${b.notes}”` : ""}</div>
+              <div className="muted small">#{b.id} · <a href={`tel:${b.phone.replace(/\s/g, "")}`}>{b.phone}</a></div>
+              {b.notes && <div className="b-request"><b>Special request:</b> “{b.notes}”</div>}
+              {b.staff_message && <div className="b-reply"><b>You replied:</b> “{b.staff_message}”</div>}
             </div>
             <span className={`badge b-${b.status}`}>{STATUS[b.status] || b.status}</span>
             <div className="b-actions">
-              {b.status === "pending" && <button className="btn small primary" onClick={() => setStatus(b, "confirmed", `Booking #${b.id} confirmed, customer texted`)}>Confirm</button>}
-              {["pending", "confirmed"].includes(b.status) && <button className="btn small" onClick={() => seat(b)}>Seat</button>}
+              {b.status === "pending" && (
+                <>
+                  <button className="btn small primary" onClick={() => setReply({ b, action: "confirmed" })}>Accept</button>
+                  <button className="btn small danger" onClick={() => setReply({ b, action: "declined" })}>Decline</button>
+                </>
+              )}
+              {b.status === "confirmed" && <button className="btn small primary" onClick={() => seat(b)}>Seat</button>}
+              {["pending", "confirmed", "seated"].includes(b.status) && <button className="btn small" onClick={() => setReply({ b, action: "message" })}>Message</button>}
               {b.status === "confirmed" && <button className="btn small ghost" onClick={() => setStatus(b, "no_show", `#${b.id} marked no-show, table freed`)}>No-show</button>}
-              {["pending", "confirmed"].includes(b.status) && <button className="btn small ghost" onClick={() => setStatus(b, "cancelled", `Booking #${b.id} cancelled, customer texted`)}>Cancel</button>}
+              {b.status === "confirmed" && <button className="btn small ghost" onClick={() => setReply({ b, action: "cancelled" })}>Cancel</button>}
             </div>
           </article>
         ))}
       </div>
 
+      {reply && <ReplyModal reply={reply} onClose={() => setReply(null)} onSend={sendReply} />}
       {adding && <PhoneBooking day={day} onClose={() => setAdding(false)} onDone={() => { setAdding(false); load(); }} />}
     </>
+  );
+}
+
+function ReplyModal({ reply, onClose, onSend }) {
+  const { b, action } = reply;
+  const a = ACTION[action];
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const need = action === "message";
+  const add = (q) => setText((t) => (t.trim() ? `${t.trim()} ${q}` : q));
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    await onSend(text.trim());
+    setBusy(false);
+  }
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h2>{a.title} #{b.id}</h2>
+        <p className="muted">{b.name} · {b.guests} guests · {clock(b.booking_at)} · Table {b.table_number || "?"} · {b.phone}</p>
+        {b.notes && <div className="b-request"><b>Their request:</b> “{b.notes}”</div>}
+        <Field label={a.label}>
+          <textarea rows={4} maxLength={500} required={need} autoFocus value={text} onChange={(e) => setText(e.target.value)}
+            placeholder={action === "confirmed" && b.notes ? "e.g. Yes, we'll have a cake ready. £15, paid on the day." : ""} />
+        </Field>
+        <div className="quick-replies">
+          {(QUICK[action] || []).map((q) => <button type="button" key={q} className="chip" onClick={() => add(q)}>{q}</button>)}
+        </div>
+        <p className="muted small">The customer gets this by text{b.phone ? ` (${b.phone})` : ""} and sees it on their booking page.</p>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={onClose}>Back</button>
+          <button className={`btn ${action === "declined" || action === "cancelled" ? "danger" : "primary"}`} disabled={busy || (need && !text.trim())}>
+            {busy ? "Sending…" : a.button}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

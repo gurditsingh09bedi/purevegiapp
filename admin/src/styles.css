@@ -186,7 +186,17 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .booking-row { display: grid; grid-template-columns: 90px 1fr auto auto; gap: 14px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-left: 6px solid var(--ok); border-radius: 12px; padding: 12px 14px; }
 .booking-row.st-pending { border-left-color: var(--amber); background: #fffaf0; }
 .booking-row.st-seated { border-left-color: #1d4e89; }
-.booking-row.st-cancelled, .booking-row.st-no_show { opacity: .55; border-left-color: #bbb; }
+.booking-row.st-cancelled, .booking-row.st-no_show, .booking-row.st-declined { opacity: .55; border-left-color: #bbb; }
+.booking-row.st-pending .badge { animation: pv-blink 1.4s ease-in-out infinite; }
+@keyframes pv-blink { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .booking-row.st-pending .badge { animation: none; } }
+.b-request { margin-top: 6px; padding: 6px 10px; border-radius: 8px; background: var(--amber-bg); color: #5c3a08; font-size: 14px; }
+.b-reply { margin-top: 6px; padding: 6px 10px; border-radius: 8px; background: var(--ok-bg); color: #14532d; font-size: 14px; }
+.badge.b-declined { background: #fde8e6; color: var(--red); }
+.quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.chip { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.chip:hover { border-color: var(--green); }
+.modal textarea { width: 100%; resize: vertical; }
 .b-time { font-family: "Rubik"; font-weight: 700; font-size: 20px; color: var(--green); display: flex; flex-direction: column; }
 .b-time span { font-size: 12px; color: var(--muted); font-family: inherit; font-weight: 600; }
 .b-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

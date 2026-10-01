@@ -84,6 +84,7 @@ function SettingsForm({ initial, onSaved }) {
         <section className="card">
           <h2>Table bookings</h2>
           <Toggle checked={s.bookings_enabled} onChange={set("bookings_enabled")} label="Take table bookings online" />
+          <Toggle checked={s.booking_auto_confirm} onChange={set("booking_auto_confirm")} label="Confirm online bookings automatically (otherwise staff accept or decline each request)" />
           <div className="grid2">
             <Field label="Booking deposit (£)"><input type="number" step="0.01" min="0" defaultValue={toPounds(s.booking_deposit_pence)} key={`dep${initial.booking_deposit_pence}`} onChange={money("booking_deposit_pence")} /></Field>
             <Field label="Full refund if cancelled (hours before)"><input type="number" min="0" value={s.booking_refund_hours} onChange={num("booking_refund_hours")} /></Field>
