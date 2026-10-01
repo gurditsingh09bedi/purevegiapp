@@ -77,11 +77,13 @@ export default function FoodFilm() {
   );
 }
 
+// The source footage is 720p from Instagram, so it is never stretched across the screen:
+// it plays sharp, near its real size, in a card. Behind it an "ambient" glow (a tiny canvas
+// copy of the same video, heavily blurred) fills the hero, so the colours move with the food.
 function Hero({ calm }) {
   const video = useRef(null);
-  const [mobile] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+  const glow = useRef(null);
   const [paused, setPaused] = useState(calm);
-  const name = mobile ? "hero-m" : "hero";
 
   // Pause the hero when it scrolls away, to save battery.
   useEffect(() => {
@@ -92,6 +94,30 @@ function Hero({ calm }) {
     return () => io.disconnect();
   }, [calm, paused]);
 
+  // Ambient glow: copy a tiny version of the current frame ~12 times a second.
+  useEffect(() => {
+    const v = video.current;
+    const c = glow.current;
+    if (!v || !c) return undefined;
+    const ctx = c.getContext("2d");
+    let raf = 0;
+    let last = 0;
+    const draw = (now) => {
+      raf = requestAnimationFrame(draw);
+      if (now - last < 80 || v.readyState < 2) return;
+      last = now;
+      try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch { /* frame not ready */ }
+    };
+    const start = () => { if (!raf) raf = requestAnimationFrame(draw); };
+    const stop = () => { cancelAnimationFrame(raf); raf = 0; };
+    const once = () => { try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch { /* not ready */ } };
+    v.addEventListener("play", start);
+    v.addEventListener("pause", stop);
+    v.addEventListener("loadeddata", once);
+    if (!v.paused) start();
+    return () => { stop(); v.removeEventListener("play", start); v.removeEventListener("pause", stop); v.removeEventListener("loadeddata", once); };
+  }, []);
+
   function toggle() {
     const v = video.current;
     if (!v) return;
@@ -100,23 +126,29 @@ function Hero({ calm }) {
 
   return (
     <section className="ff-hero" aria-label="Pure Vegi">
-      <video ref={video} className="ff-hero-video" poster={`${M}${name}.jpg`}
-        muted loop playsInline autoPlay={!calm} preload={calm ? "none" : "auto"} aria-hidden="true">
-        <Sources name={name} />
-      </video>
-      <div className="ff-hero-shade" />
-      <div className="ff-hero-copy">
-        <p className="ff-eyebrow">100% vegetarian · vegan options · Handsworth, Birmingham</p>
-        <h1>Thinking vegi?<span>Think Pure Vegi.</span></h1>
-        <p className="ff-lede">Hand-stretched pizza, flame-tossed noodles, stacked burgers and sizzlers. Delivered, collected, or at our table.</p>
-        <div className="ff-ctas">
-          <button className="btn primary big" onClick={() => showMenu()}>Order now</button>
-          <Link to="/book" className="btn ghost big">Book a table</Link>
+      <div className="ff-glow" aria-hidden="true" style={{ backgroundImage: `url(${M}hero.jpg)` }}>
+        <canvas ref={glow} width="48" height="32" />
+      </div>
+      <div className="ff-hero-inner">
+        <div className="ff-hero-copy">
+          <p className="ff-eyebrow">100% vegetarian · vegan options · Handsworth, Birmingham</p>
+          <h1>Thinking vegi?<span>Think Pure Vegi.</span></h1>
+          <p className="ff-lede">Hand-stretched pizza, flame-tossed noodles, stacked burgers and sizzlers. Delivered, collected, or at our table.</p>
+          <div className="ff-ctas">
+            <button className="btn primary big" onClick={() => showMenu()}>Order now</button>
+            <Link to="/book" className="btn ghost big">Book a table</Link>
+          </div>
+        </div>
+        <div className="ff-hero-frame">
+          <video ref={video} poster={`${M}hero.jpg`} muted loop playsInline autoPlay={!calm} preload={calm ? "none" : "auto"}
+            aria-label="Pizza, wok, burgers and sizzlers being made in the Pure Vegi kitchen">
+            <Sources name="hero" />
+          </video>
+          <button className="ff-pause" onClick={toggle} aria-label={paused ? "Play video" : "Pause video"}>
+            {paused ? "▶" : "❚❚"}
+          </button>
         </div>
       </div>
-      <button className="ff-pause" onClick={toggle} aria-label={paused ? "Play video" : "Pause video"}>
-        {paused ? "▶" : "❚❚"}
-      </button>
       {!calm && <div className="ff-scroll-cue" aria-hidden="true"><span>Scroll for the kitchen tour</span><i /></div>}
     </section>
   );
