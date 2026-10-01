@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { DishCard, ItemModal } from "../components.jsx";
 import { money } from "../format.js";
-import Cinema from "../Cinema.jsx";
+import FoodFilm from "../FoodFilm.jsx";
 import { openNow, useApp, useLoad } from "../state.jsx";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -11,7 +11,7 @@ const t12 = (hhmm) => {
   return `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`;
 };
 
-export function MenuSection({ heading = "Our menu" }) {
+export function MenuSection({ heading = "Our menu", banner = false }) {
   const menu = useLoad(() => api("/menu"));
   const [open, setOpen] = useState(null);
   const [active, setActive] = useState(null);
@@ -26,8 +26,31 @@ export function MenuSection({ heading = "Our menu" }) {
     document.getElementById(`cat-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // The film's "See the pizzas" style buttons ask for a category by name.
+  useEffect(() => {
+    const on = (e) => {
+      const want = (e.detail || "").toLowerCase();
+      const cat = want && menu.data?.find((c) => c.name.toLowerCase().includes(want));
+      if (cat) setTimeout(() => jump(cat.id), 450);
+    };
+    window.addEventListener("pv:menu", on);
+    return () => window.removeEventListener("pv:menu", on);
+  }, [menu.data]);
+
   return (
     <section id="menu" className="menu-section">
+      {banner && (
+        <div className="menu-banner">
+          <picture>
+            <source media="(max-width: 760px)" srcSet="/media/photo-spread-sm.webp" />
+            <img src="/media/photo-spread.webp" alt="A Pure Vegi spread: wraps, pizza, burger, noodles, rice and fries" loading="lazy" decoding="async" />
+          </picture>
+          <div>
+            <h2>Everything you love, all vegetarian</h2>
+            <p>Pizza, burgers, wraps, noodles, stir fry and sides. Vegan options on every page.</p>
+          </div>
+        </div>
+      )}
       <div className="menu-head">
         <h2>{heading}</h2>
         <label className="switch">
@@ -74,7 +97,7 @@ export default function Home() {
 
   return (
     <>
-      <Cinema />
+      <FoodFilm />
       {restaurant?.online_orders_paused && <p className="notice paused-banner">We're very busy right now and have paused online orders for a few minutes. Please try again shortly.</p>}
 
       <section className="facts" aria-label="Opening and delivery">
@@ -84,10 +107,11 @@ export default function Home() {
         <div className="fact"><b>Collection</b><span>Ready when you arrive</span></div>
       </section>
 
-      <MenuSection />
+      <MenuSection banner />
 
       <section className="visit">
         <div>
+          <div className="visit-photo"><img src="/media/shopfront-night.webp" alt="The Pure Vegi shopfront on Soho Road at night" loading="lazy" decoding="async" /></div>
           <h2>Visit us</h2>
           <p>{restaurant?.address || "324 Soho Rd, Handsworth, Birmingham B21 9NA"}</p>
           <p><a href="tel:01215547949">{restaurant?.phone || "0121 554 7949"}</a></p>
