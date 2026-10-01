@@ -13,7 +13,8 @@ export default defineConfig({
     port: 3000,
     allowedHosts: [".app.github.dev", "localhost"],
     proxy: {
-      ...Object.fromEntries(apiPaths.map((p) => [p, { target: API, changeOrigin: true }])),
+      // Whole path segments only: "/me" must not catch "/media/hero.mp4" or "/menu-photo.jpg".
+      [`^(${apiPaths.join("|")})(/|\\?|$)`]: { target: API, changeOrigin: true },
       "/ws": { target: API.replace(/^http/, "ws"), ws: true },
     },
   },

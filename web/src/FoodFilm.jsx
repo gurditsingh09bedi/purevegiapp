@@ -38,7 +38,7 @@ const CHAPTERS = [
 ];
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
-const ease = (x) => 1 - (1 - x) ** 3;
+const smooth = (x) => x * x * (3 - 2 * x);
 
 function calmMode() {
   const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -188,20 +188,18 @@ function ScrollStory() {
         const copy = copies.current[i];
         if (!card || !copy) return;
         const side = i % 2 === 0 ? 1 : -1; // media alternates right / left on desktop
-        let tf; let op; let cop; let cy;
-        if (t < 0) { // arriving from depth, turned away
-          const u = ease(clamp(-t));
-          tf = m
-            ? `translate3d(0, ${u * 40}vh, ${-u * 500}px) rotateX(${u * 28}deg)`
-            : `translate3d(${side * u * 34}vw, ${u * 6}vh, ${-u * 900}px) rotateY(${-side * u * 42}deg) rotateZ(${side * u * 4}deg)`;
-          op = clamp(1 - u * 1.15); cop = clamp(1 - u * 2.2); cy = u * 50;
-        } else { // settled, then swinging away
-          const u = ease(clamp((t - 0.25) / 0.75));
-          tf = m
-            ? `translate3d(0, ${-u * 34}vh, ${-u * 420}px) rotateX(${-u * 24}deg)`
-            : `translate3d(${-side * u * 30}vw, ${-u * 4}vh, ${-u * 700}px) rotateY(${side * u * 38}deg) scale(${1 + (1 - u) * 0.02})`;
-          op = clamp(1 - u * 1.2); cop = clamp(1 - u * 2.4); cy = -u * 40;
-        }
+        // Each chapter holds flat for most of its scroll (-0.2..0.3). Between two chapters the old
+        // card turns out towards its own side while the new one turns in from its side, together,
+        // like a page turn, so the screen is never empty.
+        let u; let arriving = false;
+        if (t < -0.2) { u = smooth(clamp((-0.2 - t) / 0.5)); arriving = true; } else u = smooth(clamp((t - 0.3) / 0.5));
+        const dir = arriving ? 1 : -1;
+        const tf = m
+          ? `translate3d(0, ${(dir * u * 32).toFixed(2)}vh, ${(-u * 260).toFixed(1)}px) rotateX(${(-dir * u * 16).toFixed(2)}deg)`
+          : `translate3d(${(side * u * 26).toFixed(2)}vw, 0, ${(-u * 320).toFixed(1)}px) rotateY(${(side * u * 30).toFixed(2)}deg)`;
+        const op = clamp(1 - u * 1.1);
+        const cop = clamp(1 - u * 3.2);
+        const cy = dir * u * 36;
         card.style.transform = tf;
         card.style.opacity = op.toFixed(3);
         card.style.visibility = op < 0.01 ? "hidden" : "visible";
@@ -210,7 +208,7 @@ function ScrollStory() {
         copy.style.visibility = cop < 0.01 ? "hidden" : "visible";
         copy.style.pointerEvents = cop > 0.6 ? "auto" : "none";
         const ph = photos.current[i];
-        if (ph) ph.style.transform = `translate3d(0, ${(-t * 14).toFixed(2)}vh, 120px) rotate(${(side * 6 - t * 8).toFixed(2)}deg)`;
+        if (ph) ph.style.transform = `translate3d(0, ${(-t * 8).toFixed(2)}vh, 90px) rotate(${(side * 5 - t * 5).toFixed(2)}deg)`;
         dots.current[i]?.classList.toggle("on", i === Math.round(p));
       });
       now = Math.round(p);
@@ -250,7 +248,7 @@ function ScrollStory() {
   }
 
   return (
-    <section ref={section} className="ff-story" style={{ height: `${N * 110}vh` }} aria-label="Inside the Pure Vegi kitchen">
+    <section ref={section} className="ff-story" style={{ height: `${N * 100}vh` }} aria-label="Inside the Pure Vegi kitchen">
       <div className="ff-sticky">
         <div className="ff-progress"><div ref={bar} /></div>
         <div className="ff-stage">
