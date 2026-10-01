@@ -53,11 +53,15 @@ export function showMenu(category = "") {
 }
 
 // WebM (smaller; Chrome, Firefox, Edge, Android) first, MP4 for Safari / iPhone.
+// AI-upscaled (Real-ESRGAN) footage: 1440px for big screens, 960px ("-sm") for phones, which show
+// the video only ~360px wide, so the smaller file is just as sharp and loads twice as fast.
+const SMALL = typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
 function Sources({ name }) {
+  const n = SMALL ? `${name}-sm` : name;
   return (
     <>
-      <source src={`${M}${name}.webm`} type="video/webm" />
-      <source src={`${M}${name}.mp4`} type="video/mp4" />
+      <source src={`${M}${n}.webm`} type="video/webm" />
+      <source src={`${M}${n}.mp4`} type="video/mp4" />
     </>
   );
 }
