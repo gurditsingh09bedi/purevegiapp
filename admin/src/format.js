@@ -44,3 +44,13 @@ export const ALLERGENS = [
   "celery", "cereals containing gluten", "crustaceans", "eggs", "fish", "lupin", "milk",
   "molluscs", "mustard", "tree nuts", "peanuts", "sesame", "soya", "sulphites",
 ];
+
+// WhatsApp click-to-chat: opens WhatsApp (app or web) with the customer's number and the text ready.
+export function intlPhone(phone) {
+  let p = (phone || "").replace(/[^\d+]/g, "");
+  if (p.startsWith("00")) p = p.slice(2);
+  if (p.startsWith("+")) p = p.slice(1);
+  if (p.startsWith("0")) p = "44" + p.slice(1); // UK
+  return p;
+}
+export const whatsappLink = (phone, text) => `https://wa.me/${intlPhone(phone)}${text ? `?text=${encodeURIComponent(text)}` : ""}`;

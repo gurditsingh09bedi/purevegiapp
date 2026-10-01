@@ -11,6 +11,7 @@ export default function Checkout() {
   const [type, setType] = useState("delivery");
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
+  const [email, setEmail] = useState(user?.email || "");
   const [postcode, setPostcode] = useState("");
   const [line1, setLine1] = useState("");
   const [line2, setLine2] = useState("");
@@ -77,6 +78,7 @@ export default function Checkout() {
       type,
       customer_name: name.trim(),
       customer_phone: phone.trim(),
+      customer_email: email.trim() || null,
       notes: notes.trim(),
       tip_pence: tip,
       promo_code: promo.trim() || null,
@@ -172,7 +174,9 @@ export default function Checkout() {
               <label className="field grow"><span className="field-label">Mobile number</span>
                 <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" placeholder="07…" required /></label>
             </div>
-            <p className="muted small">We text you order updates. {!user && <><Link to="/account">Log in</Link> to save your details and earn points.</>}</p>
+            <label className="field"><span className="field-label">Email (optional, for your receipt and updates)</span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" /></label>
+            <p className="muted small">We send order updates as notifications, by text and by email. {!user && <><Link to="/account">Log in</Link> to save your details and earn points.</>}</p>
             <label className="field"><span className="field-label">Note for the kitchen (optional)</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength="500" /></label>
           </section>

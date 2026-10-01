@@ -10,7 +10,7 @@ from . import models  # noqa: F401  (registers tables)
 from .config import get_config
 from .db import Base, get_engine
 from .realtime import hub, keepalive
-from .routers import admin, auth, dine_in, orders, public, staff
+from .routers import admin, auth, dine_in, orders, public, push, staff
 from .security import decode_token
 
 
@@ -47,7 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (public, auth, orders, staff, dine_in, admin):
+for r in (public, auth, orders, staff, dine_in, admin, push):
     app.include_router(r.router)
 
 

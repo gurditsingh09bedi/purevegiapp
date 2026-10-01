@@ -18,6 +18,7 @@ from ..schemas import (
     CategoryOut,
     MenuItemIn,
     MenuItemOut,
+    NotifyTestIn,
     OrderOut,
     PromotionIO,
     StaffIn,
@@ -26,6 +27,7 @@ from ..schemas import (
     UserOut,
 )
 from ..security import hash_password, table_token
+from ..services.notify import Sender
 from ..services.settings_store import save_settings
 from .orders import order_out
 
@@ -53,6 +55,29 @@ def update_settings(changes: dict, db: Session = Depends(get_db), s: RestaurantS
     save_settings(db, new)
     db.commit()
     return new
+
+
+# --- Notifications: which channels are switched on, and a test message ------------------
+
+
+def get_sender(cfg: AppConfig = Depends(config)) -> Sender:
+    return Sender(cfg)
+
+
+@router.get("/notify-status")
+def notify_status(sender: Sender = Depends(get_sender)):
+    return sender.channels()
+
+
+@router.post("/notify-test")
+def notify_test(body: NotifyTestIn, sender: Sender = Depends(get_sender)):
+    """Send a test email and/or text so the owner can check the setup."""
+    out = {}
+    if body.email:
+        out["email"] = sender.email(body.email, "Test message", "If you can read this, Pure Vegi emails are working.")
+    if body.phone:
+        out["sms"] = sender.sms(body.phone, "Pure Vegi test: if you can read this, texts are working.")
+    return out
 
 
 # --- Menu --------------------------------------------------------------------------------

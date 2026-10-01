@@ -3,7 +3,7 @@
 // (e.g. "Yes, we'll have a cake ready"). Also Message, Seat, No-show, Cancel, and phone bookings.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, kitchenSocket } from "../api.js";
-import { clock } from "../format.js";
+import { clock, dayAndTime, whatsappLink } from "../format.js";
 import { attempt, Field, PageHead, toast } from "../ui.jsx";
 
 const ukDate = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(d);
@@ -14,6 +14,16 @@ const QUICK = {
   message: ["Yes, we can arrange that for you.", "Could you call us to talk about your request?", "Running 10 minutes behind, your table will be ready shortly."],
   cancelled: ["Sorry, we've had to close early today."],
 };
+// The text a customer gets, also used to pre-fill WhatsApp.
+function customerText(b, action, note) {
+  const when = dayAndTime(b.booking_at);
+  const extra = note ? ` ${note}` : "";
+  if (action === "confirmed") return `Hi ${b.name}, your Pure Vegi booking #${b.id} is confirmed: Table ${b.table_number} for ${b.guests}, ${when}.${extra} See you soon!`;
+  if (action === "declined") return `Hi ${b.name}, sorry, we can't take your Pure Vegi booking for ${when}.${extra} Please pick another time or call 0121 554 7949.`;
+  if (action === "cancelled") return `Hi ${b.name}, your Pure Vegi booking for ${when} is cancelled.${extra} Questions? Call 0121 554 7949.`;
+  return `Hi ${b.name}, Pure Vegi here about your booking #${b.id} (${when}).${extra}`;
+}
+
 const ACTION = {
   confirmed: { title: "Accept booking", button: "Accept & text customer", path: "status", label: "Message to the customer (optional)" },
   declined: { title: "Decline booking", button: "Decline & text customer", path: "status", label: "Reason (optional, sent to the customer)" },
@@ -77,7 +87,8 @@ export default function Bookings() {
     if (ok) load();
   }
 
-  async function sendReply(message) {
+  async function sendReply(message, viaWhatsApp) {
+    if (viaWhatsApp) window.open(whatsappLink(reply.b.phone, customerText(reply.b, reply.action, message)), "_blank", "noopener");
     const { b, action } = reply;
     const a = ACTION[action];
     const body = a.path === "status" ? { status: action, message } : { message };
@@ -113,7 +124,7 @@ export default function Bookings() {
             <div className="b-time">{clock(b.booking_at)}<span>to {clock(b.ends_at)}</span></div>
             <div className="b-main">
               <b>{b.name}</b> · {b.guests} guest{b.guests === 1 ? "" : "s"} · <b>Table {b.table_number || "?"}</b>
-              <div className="muted small">#{b.id} · <a href={`tel:${b.phone.replace(/\s/g, "")}`}>{b.phone}</a></div>
+              <div className="muted small">#{b.id} · <a href={`tel:${b.phone.replace(/\s/g, "")}`}>{b.phone}</a>{b.email ? ` · ${b.email}` : ""}</div>
               {b.notes && <div className="b-request"><b>Special request:</b> “{b.notes}”</div>}
               {b.staff_message && <div className="b-reply"><b>You replied:</b> “{b.staff_message}”</div>}
             </div>
@@ -127,6 +138,7 @@ export default function Bookings() {
               )}
               {b.status === "confirmed" && <button className="btn small primary" onClick={() => seat(b)}>Seat</button>}
               {["pending", "confirmed", "seated"].includes(b.status) && <button className="btn small" onClick={() => setReply({ b, action: "message" })}>Message</button>}
+              <a className="btn small whatsapp" href={whatsappLink(b.phone, customerText(b, "message", ""))} target="_blank" rel="noopener noreferrer" title="Chat on WhatsApp">WhatsApp</a>
               {b.status === "confirmed" && <button className="btn small ghost" onClick={() => setStatus(b, "no_show", `#${b.id} marked no-show, table freed`)}>No-show</button>}
               {b.status === "confirmed" && <button className="btn small ghost" onClick={() => setReply({ b, action: "cancelled" })}>Cancel</button>}
             </div>
@@ -150,8 +162,9 @@ function ReplyModal({ reply, onClose, onSend }) {
 
   async function submit(e) {
     e.preventDefault();
+    const viaWhatsApp = e.nativeEvent.submitter?.dataset.wa === "1";
     setBusy(true);
-    await onSend(text.trim());
+    await onSend(text.trim(), viaWhatsApp); // opens WhatsApp first (must happen on the click), then texts/emails
     setBusy(false);
   }
 
@@ -168,10 +181,11 @@ function ReplyModal({ reply, onClose, onSend }) {
         <div className="quick-replies">
           {(QUICK[action] || []).map((q) => <button type="button" key={q} className="chip" onClick={() => add(q)}>{q}</button>)}
         </div>
-        <p className="muted small">The customer gets this by text{b.phone ? ` (${b.phone})` : ""} and sees it on their booking page.</p>
+        <p className="muted small">Sent by text{b.email ? ", email" : ""} and notification, and shown on their booking page. “+ WhatsApp” also opens WhatsApp with it ready to send.</p>
         <div className="modal-actions">
           <button type="button" className="btn ghost" onClick={onClose}>Back</button>
-          <button className={`btn ${action === "declined" || action === "cancelled" ? "danger" : "primary"}`} disabled={busy || (need && !text.trim())}>
+          <button type="submit" data-wa="1" className="btn whatsapp" disabled={busy || (need && !text.trim())}>+ WhatsApp</button>
+          <button type="submit" className={`btn ${action === "declined" || action === "cancelled" ? "danger" : "primary"}`} disabled={busy || (need && !text.trim())}>
             {busy ? "Sending…" : a.button}
           </button>
         </div>

@@ -162,3 +162,36 @@ export async function lookupPostcode(postcode) {
   if (!res.ok || !data || data.status !== 200) throw new ApiError(400, "We couldn't find that postcode");
   return { postcode: data.result.postcode, lat: data.result.latitude, lng: data.result.longitude };
 }
+
+// --- Browser notifications (Web Push) -------------------------------------------------------
+// Works in Chrome, Edge, Firefox and Android; on iPhone only once the site is added to the
+// Home Screen (iOS 16.4+). Inside the Pure Vegi phone app the app's own push is used instead.
+export function webPushState() {
+  if (typeof window === "undefined" || window.PV_NATIVE) return "app";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    return iOS ? "ios-home-screen" : "unsupported";
+  }
+  return Notification.permission; // "default" | "granted" | "denied"
+}
+
+function keyBytes(b64) {
+  const s = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+}
+
+// follow = { order_id, order_token } or { booking_id, booking_token } (or nothing for a logged-in customer)
+export async function enableWebPush(follow = {}, { ask = true } = {}) {
+  const state = webPushState();
+  if (state !== "granted" && !(ask && state === "default")) return state;
+  const { public_key } = await api("/push/web-key", { quiet: true });
+  if (!public_key) return "off";
+  if (state === "default" && (await Notification.requestPermission()) !== "granted") return Notification.permission;
+  const reg = await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription())
+    || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(public_key) }));
+  const j = sub.toJSON();
+  await api("/push/web-subscribe", { method: "POST", quiet: true, body: { endpoint: j.endpoint, keys: j.keys, ...follow } });
+  return "granted";
+}

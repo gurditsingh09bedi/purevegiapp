@@ -2,7 +2,7 @@
 // calling, Picked up / Delivered, and live location shared while a delivery is on the way.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, driverSocket } from "../api.js";
-import { clock, money } from "../format.js";
+import { clock, money, whatsappLink } from "../format.js";
 import { attempt, toast } from "../ui.jsx";
 
 const SEND_EVERY_MS = 10000;
@@ -131,6 +131,7 @@ function DeliveryCard({ o, children }) {
       <div className="delivery-actions">
         <a className="btn" href={`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`} target="_blank" rel="noreferrer">Navigate</a>
         {o.customer_phone && <a className="btn" href={`tel:${o.customer_phone.replace(/\s/g, "")}`}>Call customer</a>}
+        {o.customer_phone && <a className="btn whatsapp" target="_blank" rel="noopener noreferrer" href={whatsappLink(o.customer_phone, `Hi ${o.customer_name || ""}, your Pure Vegi driver here. I'm nearly with you!`)}>WhatsApp</a>}
       </div>
       {children}
     </article>

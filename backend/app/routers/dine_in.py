@@ -131,7 +131,7 @@ def create_booking(body: BookingIn, db: Session = Depends(get_db), user: User | 
     b = Booking(user_id=user.id if user and not by_staff else None, name=body.name.strip(), phone=body.phone.strip(),
                 guests=body.guests,
                 booking_at=when.astimezone(UTC), ends_at=(when + timedelta(minutes=s.booking_duration_minutes)).astimezone(UTC),
-                table_id=chosen.id, deposit_pence=deposit, notes=body.notes.strip(),
+                table_id=chosen.id, deposit_pence=deposit, notes=body.notes.strip(), email=body.email or None,
                 status="confirmed" if (by_staff or s.booking_auto_confirm) and not deposit else "pending")
     db.add(b)
     db.flush()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, orderHeaders, orderSocket, store } from "../api.js";
-import { Modal } from "../components.jsx";
+import { api, myOrderTokens, orderHeaders, orderSocket, store } from "../api.js";
+import { Modal, NotifyCard } from "../components.jsx";
 import { clock, money } from "../format.js";
 import { Link, useApp } from "../state.jsx";
 
@@ -77,6 +77,10 @@ export default function Track({ id }) {
       <h1>{headline}</h1>
       {stopped && <p className="notice">{order.status === "rejected" ? "Any payment is refunded to your card automatically. " : ""}Questions? Call <a href="tel:01215547949">0121 554 7949</a>.</p>}
       {unpaid && <p className="muted">Finish paying to send this order to the kitchen.</p>}
+
+      {!stopped && !unpaid && !DONE.includes(order.status) && (
+        <NotifyCard follow={{ order_id: order.id, order_token: myOrderTokens.get(order.id) }} what="every step of your order" />
+      )}
 
       {!stopped && !unpaid && (
         <ol className="steps" aria-label="Order progress">

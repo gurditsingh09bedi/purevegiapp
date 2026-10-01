@@ -179,6 +179,7 @@ class OrderCreate(BaseModel):
     table_token: str | None = None
     # set by the Pure Vegi app so guests get push updates for this order
     push_token: str | None = Field(None, max_length=300)
+    customer_email: str | None = Field(None, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
     @model_validator(mode="after")
     def _by_type(self) -> OrderCreate:
@@ -269,6 +270,7 @@ class BookingIn(BaseModel):
     booking_at: datetime
     table_id: int | None = None  # a table the customer picked; otherwise the best free one
     notes: str = Field("", max_length=500)
+    email: str | None = Field(None, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")  # optional: updates by email too
 
 
 class BookingOut(ORM):
@@ -287,6 +289,7 @@ class BookingOut(ORM):
     status: str
     table_id: int | None
     staff_message: str | None = None
+    email: str | None = None
     view_token: str | None = None  # lets a guest follow their request without an account
 
 
@@ -347,3 +350,24 @@ class PromotionIO(ORM):
     max_uses: int | None = None
     uses: int = 0  # read-only: how many times it has been used
     is_active: bool = True
+
+
+class WebPushKeys(BaseModel):
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=100)
+
+
+class WebPushIn(BaseModel):
+    """A browser's push subscription, optionally tied to an order or booking it is following."""
+
+    endpoint: str = Field(max_length=1000, pattern=r"^https://")
+    keys: WebPushKeys
+    order_id: int | None = None
+    order_token: str | None = None
+    booking_id: int | None = None
+    booking_token: str | None = None
+
+
+class NotifyTestIn(BaseModel):
+    email: str | None = None
+    phone: str | None = Field(None, max_length=32)

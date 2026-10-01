@@ -204,3 +204,13 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .badge.b-confirmed { background: var(--ok-bg); color: var(--ok); }
 .badge.b-seated { background: #e4ecf7; color: #1d4e89; }
 @media (max-width: 760px) { .booking-row { grid-template-columns: 70px 1fr; } .booking-row .badge, .b-actions { grid-column: 2; justify-content: flex-start; } }
+
+.btn.whatsapp { background: #25d366; border-color: #1fb457; color: #06361a; text-decoration: none; }
+.btn.whatsapp:hover { background: #1fb457; }
+.notify-setup { margin-top: 18px; }
+.channels { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 8px; }
+.channels li { padding: 8px 12px; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); }
+.channels .ch-on b { color: var(--ok); }
+.channels .ch-off b { color: var(--muted); }
+.row-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.row-form .field { flex: 1; min-width: 200px; }

@@ -2,6 +2,7 @@
 // moment the restaurant accepts or declines, and any message staff send (e.g. about a cake).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, bookingHeaders, myBookingTokens } from "../api.js";
+import { NotifyCard } from "../components.jsx";
 import { dayAndTime, money } from "../format.js";
 import { Link, navigate, useApp } from "../state.jsx";
 
@@ -96,8 +97,11 @@ export default function BookingStatus({ id }) {
         )}
 
         {v.lede && <p>{v.lede}</p>}
+        {["pending", "confirmed"].includes(b.status) && (
+          <NotifyCard follow={{ booking_id: b.id, booking_token: myBookingTokens.get(b.id) }} what="the restaurant's answer" />
+        )}
         {b.status === "pending" && (
-          <p className="muted small">This page updates by itself. We'll also text {b.phone} as soon as they reply.</p>
+          <p className="muted small">This page updates by itself. We'll also text {b.phone}{b.email ? ` and email ${b.email}` : ""} as soon as they reply.</p>
         )}
         {b.deposit_pence > 0 && ["pending", "confirmed"].includes(b.status) && (
           <p className="notice">Deposit {money(b.deposit_pence)}, taken off your final bill.</p>

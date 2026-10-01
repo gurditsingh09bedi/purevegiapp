@@ -1,5 +1,6 @@
 """End-to-end API test: a pre-order at 1 pm for a 7 pm delivery slot, through to the review prompt."""
 
+import typing
 from datetime import UTC, datetime
 
 import pytest
@@ -224,3 +225,66 @@ def test_phone_booking_by_staff_is_confirmed_straight_away(client):
     r = client.post("/bookings", headers=owner, json={"name": "Phone guest", "phone": "07700900222", "guests": 2,
                                                        "booking_at": "2026-10-02T18:00:00+01:00"})
     assert r.status_code == 201 and r.json()["status"] == "confirmed"
+
+
+def test_booking_updates_go_out_on_every_channel(client):
+    """A guest's booking: web push to their browser, email, and SMS from the restaurant's phone."""
+    import httpx
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from app import db
+    from app.config import AppConfig
+    from app.services import notify, webpush
+
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    r = c.post("/bookings", json={"name": "Gurdit", "phone": "07778233556", "guests": 2, "email": "gurdit@example.com",
+                                  "booking_at": "2026-10-02T18:00:00+01:00", "notes": "Cake please"})
+    b = r.json()
+    assert b["email"] == "gurdit@example.com"
+    browser = ec.generate_private_key(ec.SECP256R1())
+    keys = {"p256dh": webpush.b64u(browser.public_key().public_bytes(serialization.Encoding.X962,
+                                                                     serialization.PublicFormat.UncompressedPoint)),
+            "auth": webpush.b64u(b"0123456789abcdef")}
+    sub = {"endpoint": "https://fcm.googleapis.com/fcm/send/xyz", "keys": keys, "booking_id": b["id"]}
+    assert c.post("/push/web-subscribe", json=sub).status_code == 404  # needs the booking's token
+    assert c.post("/push/web-subscribe", json={**sub, "booking_token": b["view_token"]}).status_code == 204
+    c.post(f"/bookings/{b['id']}/status", headers=owner, json={"status": "confirmed", "message": "Cake is on us!"})
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(201, json={})
+
+    class SMTP:
+        sent: typing.ClassVar[list] = []
+
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
+        def send_message(self, msg):
+            SMTP.sent.append(msg)
+
+    pub, priv = webpush.new_vapid_keys()
+    cfg = AppConfig(vapid_public_key=pub, vapid_private_key=priv, smtp_host="smtp.example.com", smtp_user="u", smtp_password="p",
+                    sms_provider="android", smsgate_user="pv", smsgate_password="s")
+    sender = notify.Sender(cfg, client=httpx.Client(transport=httpx.MockTransport(handler)), smtp_factory=SMTP)
+    with db._SessionLocal() as s:
+        assert notify.send_due(s, sender) == 2  # "request sent" and "confirmed"
+    hosts = [r.url.host for r in calls]
+    assert hosts.count("fcm.googleapis.com") == 2 and hosts.count("api.sms-gate.app") == 2
+    assert len(SMTP.sent) == 2 and any("Cake is on us!" in m.get_body(("plain",)).get_content() for m in SMTP.sent)

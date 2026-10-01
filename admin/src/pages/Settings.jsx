@@ -8,7 +8,56 @@ const hhmm = (t) => (t || "").slice(0, 5);
 
 export default function Settings() {
   const state = useLoad(() => api("/admin/settings"));
-  return <Loading state={state}>{(s) => <SettingsForm initial={s} onSaved={state.reload} />}</Loading>;
+  return (
+    <>
+      <Loading state={state}>{(s) => <SettingsForm initial={s} onSaved={state.reload} />}</Loading>
+      <NotifySetup />
+    </>
+  );
+}
+
+// Which customer message channels are switched on (they're set in the server's .env), and a test.
+function NotifySetup() {
+  const st = useLoad(() => api("/admin/notify-status"));
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [result, setResult] = useState(null);
+  const c = st.data;
+  const row = (on, name, how) => (
+    <li className={on ? "ch-on" : "ch-off"}><b>{on ? "✓" : "○"} {name}</b><span className="muted"> {how}</span></li>
+  );
+
+  async function test(e) {
+    e.preventDefault();
+    const r = await attempt(() => api("/admin/notify-test", { method: "POST", body: { email: email || null, phone: phone || null } }));
+    if (r) setResult(r);
+  }
+
+  return (
+    <section className="card notify-setup">
+      <h2>Customer messages</h2>
+      {c && (
+        <ul className="channels">
+          {row(c.app_push, "Phone app notifications", "free, always on for customers using the Pure Vegi app")}
+          {row(c.web_push, "Browser notifications", c.web_push ? "free, customers tap “Turn on notifications” on the website" : "needs PV_VAPID keys (Codespaces makes them; or run python -m app.vapid)")}
+          {row(c.email, "Email", c.email ? "sent from your mailbox" : "add PV_SMTP_HOST, PV_SMTP_USER, PV_SMTP_PASSWORD (Gmail app password works)")}
+          {row(!!c.sms, "SMS", c.sms === "android" ? "sent from the restaurant's Android phone (SMS Gate)" : c.sms === "twilio" ? "sent through Twilio" : "install SMS Gate on the restaurant's Android phone, then set PV_SMS_PROVIDER=android, PV_SMSGATE_USER, PV_SMSGATE_PASSWORD")}
+          {row(true, "WhatsApp", "free: the green WhatsApp buttons on Bookings open a chat with the message ready")}
+        </ul>
+      )}
+      <form className="row-form" onSubmit={test}>
+        <Field label="Test email to"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
+        <Field label="Test text to"><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07…" /></Field>
+        <button className="btn" disabled={!email && !phone}>Send test</button>
+      </form>
+      {result && (
+        <p className="muted">
+          {"email" in result && <>Email: {result.email ? "sent ✓" : "not sent (not set up, or the login was refused)"}. </>}
+          {"sms" in result && <>Text: {result.sms ? "sent ✓" : "not sent (not set up, or the phone is offline)"}.</>}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function SettingsForm({ initial, onSaved }) {

@@ -137,6 +137,7 @@ class Booking(TS, Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # table is held until then
     staff_message: Mapped[str | None] = mapped_column(Text)  # last message the restaurant sent the customer
+    email: Mapped[str | None] = mapped_column(String(254))  # optional, for email updates
     table: Mapped[DiningTable | None] = relationship()
 
 
@@ -169,6 +170,7 @@ class Order(TS, Base):
     customer_phone: Mapped[str] = mapped_column(String(32), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     push_token: Mapped[str | None] = mapped_column(String(300))  # the app's push token, for guests without an account
+    customer_email: Mapped[str | None] = mapped_column(String(254))  # guests can give an email for updates
 
     # Delivery
     slot_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -251,6 +253,20 @@ class Device(TS, Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     push_token: Mapped[str] = mapped_column(String(300), unique=True)
     platform: Mapped[str] = mapped_column(String(20))  # android, ios, web
+
+
+class WebPushSubscription(TS, Base):
+    """A browser that asked for notifications (website or installed web app), for a customer,
+    an order or a booking. Sent with the standard Web Push protocol, no outside service needed."""
+
+    __tablename__ = "web_push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), index=True)
+    booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id"), index=True)
 
 
 class DriverLocation(Base):

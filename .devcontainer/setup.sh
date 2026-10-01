@@ -12,6 +12,7 @@ PV_DATABASE_URL=sqlite:///./purevegi.db
 PV_JWT_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
 PV_DEV_PAYMENTS=true
 EOF
+  python -m app.vapid >> .env
 fi
 python -m app.seed --owner-email owner@purevegi.co.uk --owner-password Test12345
 

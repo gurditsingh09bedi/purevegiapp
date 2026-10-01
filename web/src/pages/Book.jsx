@@ -17,12 +17,12 @@ export default function Book() {
   const [guests, setGuests] = useState(2);
   const [time, setTime] = useState(null); // an availability row
   const [tableId, setTableId] = useState(null);
-  const [f, setF] = useState({ name: user?.name || "", phone: user?.phone || "", notes: "" });
+  const [f, setF] = useState({ name: user?.name || "", phone: user?.phone || "", email: user?.email || "", notes: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [alternatives, setAlternatives] = useState([]);
 
-  useEffect(() => { if (user) setF((x) => ({ ...x, name: x.name || user.name, phone: x.phone || user.phone || "" })); }, [user]);
+  useEffect(() => { if (user) setF((x) => ({ ...x, name: x.name || user.name, phone: x.phone || user.phone || "", email: x.email || user.email || "" })); }, [user]);
 
   const avail = useLoad(() => api("/bookings/availability", { query: { day, guests } }), [day, guests]);
   useEffect(() => { setTime(null); setTableId(null); setAlternatives([]); setError(""); }, [day, guests]);
@@ -49,7 +49,7 @@ export default function Book() {
     try {
       const b = await api("/bookings", {
         method: "POST",
-        body: { name: f.name.trim(), phone: f.phone.trim(), guests: Number(guests), booking_at: time.start, table_id: tableId, notes: f.notes.trim() },
+        body: { name: f.name.trim(), phone: f.phone.trim(), email: f.email.trim() || null, guests: Number(guests), booking_at: time.start, table_id: tableId, notes: f.notes.trim() },
       });
       myBookingTokens.add(b.id, b.view_token);
       navigate(`/booking/${b.id}`); // live status: request sent -> confirmed or declined
@@ -148,6 +148,8 @@ export default function Book() {
             <label className="field grow"><span className="field-label">Name</span><input value={f.name} onChange={set("name")} required autoComplete="name" /></label>
             <label className="field grow"><span className="field-label">Mobile</span><input type="tel" value={f.phone} onChange={set("phone")} required minLength={10} autoComplete="tel" /></label>
           </div>
+          <label className="field"><span className="field-label">Email (optional, for updates by email too)</span>
+            <input type="email" value={f.email} onChange={set("email")} autoComplete="email" placeholder="you@example.com" /></label>
           <label className="field"><span className="field-label">Anything we should know? (optional)</span>
             <textarea rows={3} maxLength={500} value={f.notes} onChange={set("notes")} placeholder="Birthday cake, high chair, allergies… the restaurant will reply" /></label>
           {deposit > 0 && <p className="muted">Deposit: {money(deposit)}, taken off your final bill.</p>}

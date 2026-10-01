@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { busy } from "./api.js";
+import { busy, enableWebPush, webPushState } from "./api.js";
 import { money } from "./format.js";
 import { Link, navigate, openNow, useApp } from "./state.jsx";
 
@@ -262,6 +262,35 @@ export function BusyOverlay() {
         </div>
         <p>Just a moment…</p>
       </div>
+    </div>
+  );
+}
+
+// "Get updates on this device": browser notifications for an order or a booking.
+// Already allowed -> subscribes quietly. Hidden inside the phone app (it has its own push).
+export function NotifyCard({ follow, what = "updates" }) {
+  const [state, setState] = useState(() => webPushState());
+  const [working, setWorking] = useState(false);
+  const key = JSON.stringify(follow);
+
+  useEffect(() => {
+    if (webPushState() === "granted") enableWebPush(follow, { ask: false }).then(setState).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  if (state === "app" || state === "unsupported" || state === "off") return null;
+  if (state === "granted") return <p className="notify-card on">🔔 Notifications are on for this device.</p>;
+  if (state === "denied") return <p className="notify-card muted small">Notifications are blocked in your browser settings. We'll still text you.</p>;
+  if (state === "ios-home-screen") {
+    return <p className="notify-card muted small">On iPhone: tap Share → “Add to Home Screen”, open Pure Vegi from there, and you can turn on notifications.</p>;
+  }
+  return (
+    <div className="notify-card">
+      <span>🔔 Get {what} on this device, even when this page is closed.</span>
+      <button className="btn small primary" disabled={working} onClick={async () => {
+        setWorking(true);
+        try { setState(await enableWebPush(follow)); } catch { setState(webPushState()); } finally { setWorking(false); }
+      }}>{working ? "…" : "Turn on notifications"}</button>
     </div>
   );
 }

@@ -494,3 +494,10 @@ svg.layer-z { overflow: visible; }
 a.booking-line { color: inherit; text-decoration: none; }
 .pill.b-pending { background: #fff3dc; color: #6b4608; }
 .pill.b-declined { background: #fbe4e2; color: #8c1d18; }
+
+/* Browser notifications prompt */
+.notify-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; text-align: left;
+  background: #eef6f1; border: 1px solid #b9d9c5; border-radius: 14px; padding: 10px 14px; margin: 12px 0; }
+.notify-card.on { color: var(--green); font-weight: 700; justify-content: center; }
+.notify-card.muted { background: transparent; border-style: dashed; }
+.btn.small { padding: 7px 14px; font-size: 14px; }
