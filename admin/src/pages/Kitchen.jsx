@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, kitchenSocket } from "../api.js";
 import { clock, minutesFrom, TYPE_LABEL } from "../format.js";
+import { announce, chime, say, soundReady, unlockSound } from "../announcer.js";
 import { attempt, toast } from "../ui.jsx";
+
+const REPEAT_MS = 15000; // keep announcing every 15 seconds until the order is accepted
+const SOUND_PREF = "pv_kitchen_sound";
 
 const COLUMNS = [
   { key: "new", title: "New orders", statuses: ["placed"] },
@@ -11,40 +15,38 @@ const COLUMNS = [
 ];
 const URGENCY_WORD = { waiting: "Pre-order", ok: "On time", amber: "Getting late", red: "Late" };
 
-function beep() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [0, 0.25].forEach((t) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = 880;
-      g.gain.setValueAtTime(0.2, ctx.currentTime + t);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.2);
-      o.connect(g).connect(ctx.destination);
-      o.start(ctx.currentTime + t);
-      o.stop(ctx.currentTime + t + 0.2);
-    });
-  } catch {
-    /* sound blocked until someone taps the screen */
-  }
-}
-
 export default function Kitchen() {
   const [tickets, setTickets] = useState(null);
   const [info, setInfo] = useState(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
   const known = useRef(null);
+  const seen = useRef(null); // every order id on the board, to spot auto-accepted ones
+  const [soundOn, setSoundOn] = useState(() => { try { return localStorage.getItem(SOUND_PREF) !== "off"; } catch { return true; } });
+  const [ready, setReady] = useState(soundReady());
+  const pendingRef = useRef([]);
+  const soundRef = useRef(soundOn);
+  soundRef.current = soundOn;
 
   const load = useCallback(async () => {
     try {
       const q = await api("/kitchen/queue");
-      const newIds = q.filter((t) => t.order.status === "placed").map((t) => t.order.id);
+      const waiting = q.filter((t) => t.order.status === "placed").map((t) => t.order);
+      const newIds = waiting.map((o) => o.id);
+      pendingRef.current = waiting;
       if (known.current && newIds.some((id) => !known.current.has(id))) {
-        beep();
-        toast("New order in");
+        const fresh = waiting.filter((o) => !known.current.has(o.id));
+        if (soundRef.current) announce(fresh);
+        toast(fresh.some((o) => o.type === "dine_in") ? `New order from table ${fresh.find((o) => o.type === "dine_in").table_number}` : "New online order");
       }
       known.current = new Set(newIds);
+      // Auto-accept on: orders skip "New", so announce them once when they first appear.
+      const ids = new Set(q.map((t) => t.order.id));
+      if (seen.current) {
+        const auto = q.map((t) => t.order).filter((o) => o.status === "accepted" && !seen.current.has(o.id));
+        if (auto.length && soundRef.current) announce(auto);
+      }
+      seen.current = ids;
       setTickets(q);
       setError("");
     } catch (e) {
@@ -59,11 +61,49 @@ export default function Kitchen() {
     const clockTick = setInterval(() => setNow(Date.now()), 30000);
     const stop = kitchenSocket((ev) => {
       if (ev.event === "online_orders_paused") setInfo((i) => (i ? { ...i, online_orders_paused: ev.paused } : i));
-      if (ev.event === "booking_created") { beep(); toast(ev.status === "pending" ? "New table booking request: answer it on the Bookings page" : "New table booking"); return; }
+      if (ev.event === "booking_created") { if (soundRef.current) chime(); toast(ev.status === "pending" ? "New table booking request: answer it on the Bookings page" : "New table booking"); return; }
       load();
     });
     return () => { clearInterval(poll); clearInterval(clockTick); stop(); };
   }, [load]);
+
+  // Keep announcing until every new order has been accepted (or rejected).
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (soundRef.current && pendingRef.current.length) announce(pendingRef.current, true);
+    }, REPEAT_MS);
+    return () => clearInterval(t);
+  }, []);
+
+  // Any tap on the page unlocks sound (browsers need one tap before they allow audio).
+  useEffect(() => {
+    if (ready) return undefined;
+    const on = () => {
+      unlockSound();
+      setReady(true);
+      if (soundRef.current && pendingRef.current.length) announce(pendingRef.current); // orders already waiting
+    };
+    window.addEventListener("pointerdown", on, { once: true });
+    return () => window.removeEventListener("pointerdown", on);
+  }, [ready]);
+
+  function enableSound() {
+    unlockSound();
+    setReady(true);
+    setSoundOn(true);
+    try { localStorage.setItem(SOUND_PREF, "on"); } catch { /* ignore */ }
+    if (pendingRef.current.length) announce(pendingRef.current);
+    else { const w = chime(); setTimeout(() => say("Sound is on. New orders will be announced."), w); } // a quick test so staff hear it works
+    toast("Sound is on: new orders will be announced");
+  }
+
+  function toggleSound() {
+    const next = !soundOn;
+    if (next) { enableSound(); return; }
+    setSoundOn(false);
+    window.speechSynthesis?.cancel();
+    try { localStorage.setItem(SOUND_PREF, "off"); } catch { /* ignore */ }
+  }
 
   async function act(path, body, okText) {
     const ok = await attempt(() => api(path, { method: "POST", body }), okText);
@@ -86,6 +126,9 @@ export default function Kitchen() {
         <span className="muted">{new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}</span>
         <div className="spacer" />
         {error && <span className="error">Offline: {error}</span>}
+        <button className={`btn ${soundOn && ready ? "ghost" : "danger"}`} onClick={toggleSound} aria-pressed={soundOn}>
+          {soundOn && ready ? "🔊 Sound on" : soundOn ? "🔇 Tap to turn on sound" : "🔇 Sound off"}
+        </button>
         <button
           className={`btn ${info?.online_orders_paused ? "danger" : "ghost"}`}
           onClick={togglePause}
@@ -94,6 +137,19 @@ export default function Kitchen() {
           {info?.online_orders_paused ? "Online orders PAUSED · tap to resume" : "Busy? Pause online orders"}
         </button>
       </div>
+
+      {soundOn && !ready && (
+        <button className="sound-gate" onPointerDown={(e) => { e.stopPropagation(); enableSound(); }}>
+          <b>🔔 Tap here to turn on order sounds</b>
+          <span>The screen will call out every new order (“Order received from table number 7”) until it is accepted.</span>
+        </button>
+      )}
+      {tickets && tickets.some((t) => t.order.status === "placed") && (
+        <div className="order-alarm" role="alert">
+          <b>🔔 {tickets.filter((t) => t.order.status === "placed").length} waiting to be accepted</b>
+          <span>{tickets.filter((t) => t.order.status === "placed").map((t) => (t.order.type === "dine_in" ? `Table ${t.order.table_number}` : `#${t.order.id} ${TYPE_LABEL[t.order.type]}`)).join(" · ")}</span>
+        </div>
+      )}
 
       {!tickets ? (
         <p className="muted">Loading orders…</p>

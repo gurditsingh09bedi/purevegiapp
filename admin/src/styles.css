@@ -214,3 +214,13 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .channels .ch-off b { color: var(--muted); }
 .row-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .row-form .field { flex: 1; min-width: 200px; }
+
+/* Kitchen: sound gate and "waiting to be accepted" alarm */
+.sound-gate { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; margin-bottom: 14px; padding: 16px 20px; border-radius: 14px;
+  border: 2px dashed var(--amber); background: var(--amber-bg); color: #5c3a08; font: inherit; cursor: pointer; }
+.sound-gate b { font-size: 20px; }
+.order-alarm { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; padding: 12px 18px; border-radius: 14px;
+  background: var(--red); color: #fff; animation: pv-alarm 1.2s ease-in-out infinite; }
+.order-alarm b { font-size: 20px; }
+@keyframes pv-alarm { 50% { background: #7a1810; } }
+@media (prefers-reduced-motion: reduce) { .order-alarm { animation: none; } }
