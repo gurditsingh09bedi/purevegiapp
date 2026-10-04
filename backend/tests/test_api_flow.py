@@ -179,10 +179,13 @@ def test_booking_request_waits_for_staff_then_customer_is_told(client):
     assert c.get(f"/bookings/{b['id']}", headers={"X-Booking-Token": "nope"}).status_code == 404
     assert c.get(f"/bookings/{b['id']}", headers=guest).json()["status"] == "pending"
     assert c.post(f"/bookings/{b['id']}/seat", headers=owner).status_code == 409  # accept first
+    waiting = c.get("/bookings", params={"status": "pending"}, headers=owner).json()
+    assert [x["id"] for x in waiting] == [b["id"]]  # the kitchen screen sees the request
 
     note = "Yes, we'll have a cake ready for your parents. £15, paid on the day."
     r = c.post(f"/bookings/{b['id']}/status", headers=owner, json={"status": "confirmed", "message": note})
     assert r.status_code == 200, r.text
+    assert c.get("/bookings", params={"status": "pending"}, headers=owner).json() == []
     seen = c.get(f"/bookings/{b['id']}", headers=guest).json()
     assert seen["status"] == "confirmed" and seen["staff_message"] == note
     assert note in _texts(b["id"])[-1] and "Confirmed!" in _texts(b["id"])[-1]

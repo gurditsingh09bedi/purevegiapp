@@ -289,10 +289,19 @@ def table_paid(session_id: int, db: Session = Depends(get_db), _: User = Depends
     db.commit()
 
 
+_STATUSES = "^(pending|confirmed|seated|declined|cancelled|no_show)$"
+
+
 @router.get("/bookings", response_model=list[BookingOut])
-def list_bookings(day: date | None = None, db: Session = Depends(get_db), _: User = Depends(kitchen_staff),
-                  s: RestaurantSettings = Depends(settings)):
+def list_bookings(day: date | None = None, status: str | None = Query(None, pattern=_STATUSES),
+                  db: Session = Depends(get_db), _: User = Depends(kitchen_staff), s: RestaurantSettings = Depends(settings),
+                  at: datetime = Depends(now)):
+    """Staff list. ?status=pending gives the requests still waiting for an answer (the kitchen screen calls them out)."""
     q = select(Booking).order_by(Booking.booking_at)
+    if status:
+        q = q.where(Booking.status == status)
+        if status == "pending":
+            q = q.where(Booking.booking_at >= at - timedelta(hours=2))  # forget stale requests from the past
     if day:
         start = datetime.combine(day, time(), ZoneInfo(s.timezone)).astimezone(UTC)
         q = q.where(Booking.booking_at >= start, Booking.booking_at < start + timedelta(days=1))

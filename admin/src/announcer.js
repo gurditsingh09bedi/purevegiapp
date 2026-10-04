@@ -61,6 +61,11 @@ export function chime() {
   return 1300; // ms until the chime has finished
 }
 
+if (typeof window !== "undefined" && window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
 function voice() {
   const vs = window.speechSynthesis?.getVoices() || [];
   return vs.find((v) => v.lang === "en-GB" && /female|libby|sonia|serena|kate|google uk english female/i.test(v.name))
@@ -70,6 +75,7 @@ function voice() {
 export function say(text) {
   const s = window.speechSynthesis;
   if (!s) return;
+  const busy = s.speaking || s.pending;
   s.cancel(); // never stack announcements on top of each other
   const u = new SpeechSynthesisUtterance(text);
   const v = voice();
@@ -77,7 +83,9 @@ export function say(text) {
   u.lang = v?.lang || "en-GB";
   u.rate = 0.95;
   u.volume = 1;
-  s.speak(u);
+  // Chrome sometimes drops a speak() that comes straight after cancel(), so leave a short gap.
+  if (busy) setTimeout(() => s.speak(u), 150);
+  else s.speak(u);
 }
 
 const NUM = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
@@ -102,10 +110,35 @@ export function announcement(orders, repeat = false) {
   return parts.join(" ");
 }
 
-// Chime, then speak.
-export function announce(orders, repeat = false) {
-  if (!unlocked || !orders.length) return;
+// "today at 7 pm", "tomorrow at 7:30 pm", "on Saturday 10 October at 1 pm" (UK time)
+export function spokenWhen(iso, now = new Date()) {
+  const tz = "Europe/London";
+  const d = new Date(iso);
+  const day = (x) => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(x);
+  const time = d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: tz })
+    .replace(":00", "").replace(/\s?(am|pm)/i, " $1").toLowerCase();
+  if (day(d) === day(now)) return `today at ${time}`;
+  if (day(d) === day(new Date(now.getTime() + 86400000))) return `tomorrow at ${time}`;
+  const date = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: tz });
+  return `on ${date} at ${time}`;
+}
+
+// What to say for table booking requests still waiting for an answer.
+export function bookingAnnouncement(bookings, repeat = false, now = new Date()) {
+  if (!bookings.length) return "";
+  if (bookings.length === 1) {
+    const b = bookings[0];
+    const extra = b.notes ? " It has a special request." : "";
+    return `New table booking request: table for ${words(b.guests)}, ${spokenWhen(b.booking_at, now)}.${extra}${repeat ? " Please accept or decline it." : ""}`;
+  }
+  const n = words(bookings.length);
+  return `${n[0].toUpperCase()}${n.slice(1)} table booking requests are waiting.${repeat ? " Please accept or decline them." : ""}`;
+}
+
+// Chime, then speak everything that is waiting (orders and booking requests).
+export function announce(orders, repeat = false, bookings = []) {
+  if (!unlocked || (!orders.length && !bookings.length)) return;
   const wait = chime();
-  const text = announcement(orders, repeat);
+  const text = [orders.length ? announcement(orders, repeat) : "", bookingAnnouncement(bookings, repeat)].filter(Boolean).join(" ");
   setTimeout(() => say(text), wait);
 }

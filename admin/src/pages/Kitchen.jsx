@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, kitchenSocket } from "../api.js";
-import { clock, minutesFrom, TYPE_LABEL } from "../format.js";
+import { clock, dayAndTime, minutesFrom, TYPE_LABEL } from "../format.js";
 import { announce, chime, say, soundReady, unlockSound } from "../announcer.js";
 import { attempt, toast } from "../ui.jsx";
 
@@ -25,6 +25,9 @@ export default function Kitchen() {
   const [soundOn, setSoundOn] = useState(() => { try { return localStorage.getItem(SOUND_PREF) !== "off"; } catch { return true; } });
   const [ready, setReady] = useState(soundReady());
   const pendingRef = useRef([]);
+  const [requests, setRequests] = useState([]); // table booking requests waiting for an answer
+  const requestsRef = useRef([]);
+  const knownReq = useRef(null);
   const soundRef = useRef(soundOn);
   soundRef.current = soundOn;
 
@@ -54,23 +57,42 @@ export default function Kitchen() {
     }
   }, []);
 
+  const loadRequests = useCallback(async () => {
+    try {
+      const rows = await api("/bookings", { query: { status: "pending" }, quiet: true });
+      requestsRef.current = rows;
+      if (knownReq.current) {
+        const fresh = rows.filter((b) => !knownReq.current.has(b.id));
+        if (fresh.length) {
+          if (soundRef.current) announce([], false, fresh);
+          toast(`New table booking request: ${fresh[0].name}, ${fresh[0].guests} guests`);
+        }
+      }
+      knownReq.current = new Set(rows.map((b) => b.id));
+      setRequests(rows);
+    } catch {
+      /* this account can't see bookings: the panel simply stays empty */
+    }
+  }, []);
+
   useEffect(() => {
     load();
+    loadRequests();
     api("/restaurant").then(setInfo).catch(() => {});
-    const poll = setInterval(load, 15000);
+    const poll = setInterval(() => { load(); loadRequests(); }, 15000);
     const clockTick = setInterval(() => setNow(Date.now()), 30000);
     const stop = kitchenSocket((ev) => {
       if (ev.event === "online_orders_paused") setInfo((i) => (i ? { ...i, online_orders_paused: ev.paused } : i));
-      if (ev.event === "booking_created") { if (soundRef.current) chime(); toast(ev.status === "pending" ? "New table booking request: answer it on the Bookings page" : "New table booking"); return; }
+      if (ev.event?.startsWith("booking")) { loadRequests(); return; } // requests are announced by loadRequests
       load();
     });
     return () => { clearInterval(poll); clearInterval(clockTick); stop(); };
-  }, [load]);
+  }, [load, loadRequests]);
 
   // Keep announcing until every new order has been accepted (or rejected).
   useEffect(() => {
     const t = setInterval(() => {
-      if (soundRef.current && pendingRef.current.length) announce(pendingRef.current, true);
+      if (soundRef.current && (pendingRef.current.length || requestsRef.current.length)) announce(pendingRef.current, true, requestsRef.current);
     }, REPEAT_MS);
     return () => clearInterval(t);
   }, []);
@@ -81,7 +103,7 @@ export default function Kitchen() {
     const on = () => {
       unlockSound();
       setReady(true);
-      if (soundRef.current && pendingRef.current.length) announce(pendingRef.current); // orders already waiting
+      if (soundRef.current) announce(pendingRef.current, false, requestsRef.current); // what's already waiting
     };
     window.addEventListener("pointerdown", on, { once: true });
     return () => window.removeEventListener("pointerdown", on);
@@ -92,7 +114,7 @@ export default function Kitchen() {
     setReady(true);
     setSoundOn(true);
     try { localStorage.setItem(SOUND_PREF, "on"); } catch { /* ignore */ }
-    if (pendingRef.current.length) announce(pendingRef.current);
+    if (pendingRef.current.length || requestsRef.current.length) announce(pendingRef.current, false, requestsRef.current);
     else { const w = chime(); setTimeout(() => say("Sound is on. New orders will be announced."), w); } // a quick test so staff hear it works
     toast("Sound is on: new orders will be announced");
   }
@@ -103,6 +125,12 @@ export default function Kitchen() {
     setSoundOn(false);
     window.speechSynthesis?.cancel();
     try { localStorage.setItem(SOUND_PREF, "off"); } catch { /* ignore */ }
+  }
+
+  async function acceptBooking(b) {
+    const ok = await attempt(() => api(`/bookings/${b.id}/status`, { method: "POST", body: { status: "confirmed" } }),
+      `Booking #${b.id} accepted, customer texted`);
+    if (ok) loadRequests();
   }
 
   async function act(path, body, okText) {
@@ -118,6 +146,7 @@ export default function Kitchen() {
   }
 
   const choices = info?.prep_minute_choices || [10, 15, 20, 30];
+  const waitingOrders = (tickets || []).filter((t) => t.order.status === "placed").map((t) => t.order);
 
   return (
     <div className="kitchen">
@@ -144,11 +173,30 @@ export default function Kitchen() {
           <span>The screen will call out every new order (“Order received from table number 7”) until it is accepted.</span>
         </button>
       )}
-      {tickets && tickets.some((t) => t.order.status === "placed") && (
+      {(waitingOrders.length > 0 || requests.length > 0) && (
         <div className="order-alarm" role="alert">
-          <b>🔔 {tickets.filter((t) => t.order.status === "placed").length} waiting to be accepted</b>
-          <span>{tickets.filter((t) => t.order.status === "placed").map((t) => (t.order.type === "dine_in" ? `Table ${t.order.table_number}` : `#${t.order.id} ${TYPE_LABEL[t.order.type]}`)).join(" · ")}</span>
+          <b>🔔 {[waitingOrders.length && `${waitingOrders.length} order${waitingOrders.length > 1 ? "s" : ""}`,
+            requests.length && `${requests.length} table booking${requests.length > 1 ? "s" : ""}`].filter(Boolean).join(" + ")} waiting to be accepted</b>
+          <span>{waitingOrders.map((o) => (o.type === "dine_in" ? `Table ${o.table_number}` : `#${o.id} ${TYPE_LABEL[o.type]}`)).join(" · ")}</span>
         </div>
+      )}
+
+      {requests.length > 0 && (
+        <section className="booking-requests" aria-label="Table booking requests">
+          <h2>📅 Table booking requests</h2>
+          {requests.map((b) => (
+            <article key={b.id} className="booking-req">
+              <div>
+                <b>{b.name}</b> · {b.guests} guest{b.guests === 1 ? "" : "s"} · {dayAndTime(b.booking_at)} · Table {b.table_number || "?"}
+                {b.notes && <div className="b-request"><b>Special request:</b> “{b.notes}”</div>}
+              </div>
+              <div className="b-actions">
+                <button className="btn primary" onClick={() => acceptBooking(b)}>Accept</button>
+                <a className="btn ghost" href="#/bookings">Decline / reply</a>
+              </div>
+            </article>
+          ))}
+        </section>
       )}
 
       {!tickets ? (

@@ -224,3 +224,8 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .order-alarm b { font-size: 20px; }
 @keyframes pv-alarm { 50% { background: #7a1810; } }
 @media (prefers-reduced-motion: reduce) { .order-alarm { animation: none; } }
+
+.booking-requests { background: var(--paper); border: 2px solid var(--amber); border-radius: 14px; padding: 12px 16px; margin-bottom: 14px; }
+.booking-requests h2 { margin: 0 0 8px; font-size: 18px; }
+.booking-req { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
+.booking-req:first-of-type { border-top: 0; }
