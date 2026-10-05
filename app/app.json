@@ -19,7 +19,7 @@
     },
     "plugins": [
       ["expo-notifications", { "color": "#023E32" }],
-      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 200, "backgroundColor": "#023E32" }]
+      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 220, "resizeMode": "contain", "backgroundColor": "#023E32" }]
     ],
     "extra": {
       "siteUrl": "https://purevegi.co.uk",

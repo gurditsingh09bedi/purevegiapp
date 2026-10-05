@@ -4,7 +4,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "setup": "npx expo install react react-native react-native-webview react-native-safe-area-context expo-notifications expo-device expo-constants expo-status-bar expo-splash-screen",
+    "setup": "npx expo install react react-native react-native-webview react-native-safe-area-context expo-notifications expo-device expo-constants expo-status-bar expo-splash-screen expo-haptics",
     "start": "expo start",
     "tunnel": "expo start --tunnel",
     "check": "expo export --platform android --output-dir dist-check"

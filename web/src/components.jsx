@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { busy, enableWebPush, webPushState } from "./api.js";
-import { flyToCart, tiltProps } from "./fx.js";
+import { buzz, flyToCart, tiltProps } from "./fx.js";
 import { money } from "./format.js";
 import { Link, navigate, openNow, useApp } from "./state.jsx";
 
@@ -233,6 +233,8 @@ export function BusyOverlay() {
     const boot = document.getElementById("boot-loader");
     const finishBoot = () => {
       if (!boot || boot.classList.contains("gone")) return;
+      const wait = Number(boot.dataset.until || 0) - Date.now(); // the app splash plays for a moment first
+      if (wait > 0) { setTimeout(finishBoot, wait); return; }
       boot.classList.add("gone");
       setTimeout(() => boot.remove(), 500);
     };
@@ -295,5 +297,35 @@ export function NotifyCard({ follow, what = "updates" }) {
         try { setState(await enableWebPush(follow)); } catch { setState(webPushState()); } finally { setWorking(false); }
       }}>{working ? "…" : "Turn on notifications"}</button>
     </div>
+  );
+}
+
+// Phone-style tab bar at the bottom (phones and the Pure Vegi app). Hidden on table QR pages.
+const ICON = {
+  menu: "M4 6h16M4 12h16M4 18h10",
+  book: "M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm3 9h3v3H8z",
+  orders: "M6 3h12l1 4H5l1-4Zm-1 4h14v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7Zm4 4h6M9 15h4",
+  basket: "M3 9h18l-2 11H5L3 9Zm4 0 3-6m7 6-3-6M9 13v4m6-4v4",
+};
+function TabIcon({ d }) {
+  return <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+export function TabBar({ path }) {
+  const { count, setCartOpen, user } = useApp();
+  const tab = (key, label, active, onClick, badge) => (
+    <button key={key} className={`tab ${active ? "on" : ""}`} aria-current={active ? "page" : undefined}
+      onClick={() => { buzz(8); onClick(); }}>
+      <span className="tab-ico"><TabIcon d={ICON[key]} />{badge > 0 && <span className="tab-badge">{badge}</span>}</span>
+      <span>{label}</span>
+    </button>
+  );
+  const onHome = path === "/" || path === "";
+  return (
+    <nav className="tabbar" aria-label="App">
+      {tab("menu", "Menu", onHome, () => { if (!onHome) navigate("/"); setTimeout(() => document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" }), onHome ? 0 : 120); })}
+      {tab("book", "Book", path === "/book" || path.startsWith("/booking/"), () => navigate("/book"))}
+      {tab("orders", user ? "My orders" : "Orders", path === "/account" || path.startsWith("/order/"), () => navigate("/account"))}
+      {tab("basket", "Basket", false, () => setCartOpen(true), count)}
+    </nav>
   );
 }

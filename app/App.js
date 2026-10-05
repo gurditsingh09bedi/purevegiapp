@@ -10,6 +10,7 @@ import { StatusBar } from "expo-status-bar";
 import { WebView } from "react-native-webview";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import * as Haptics from "expo-haptics";
 import Constants from "expo-constants";
 
 const extra = Constants.expoConfig?.extra ?? {};
@@ -95,6 +96,15 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // The website asks for a little haptic tap (add to basket, tab bar) or a success buzz (order placed).
+  const onMessage = useCallback((e) => {
+    let msg = null;
+    try { msg = JSON.parse(e.nativeEvent.data); } catch { return; }
+    if (msg?.type !== "haptic") return;
+    if (msg.kind === "success") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    else Haptics.impactAsync(msg.kind === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
+
   const onShouldStart = useCallback((req) => {
     const { url } = req;
     if (url.startsWith("about:") || url.startsWith("data:") || url.startsWith("blob:")) return true;
@@ -122,6 +132,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      {/* bottom edge is left to the website: its tab bar adds the home-indicator space itself */}
       <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
         <StatusBar style="light" backgroundColor="#023E32" />
         <WebView
@@ -133,6 +144,7 @@ export default function App() {
           onLoadEnd={() => token && web.current?.injectJavaScript(nativeScript(token))}
           onNavigationStateChange={(s) => { canGoBack.current = s.canGoBack; }}
           onShouldStartLoadWithRequest={onShouldStart}
+          onMessage={onMessage}
           onError={() => setFailed(true)}
           onHttpError={(e) => { if (e.nativeEvent.statusCode >= 500 && hostOf(e.nativeEvent.url) === SITE_HOST) setFailed(true); }}
           setSupportMultipleWindows={false}

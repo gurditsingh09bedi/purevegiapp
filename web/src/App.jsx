@@ -1,4 +1,4 @@
-import { BusyOverlay, CartDrawer, Footer, Header } from "./components.jsx";
+import { BusyOverlay, CartDrawer, Footer, Header, TabBar } from "./components.jsx";
 import Account from "./pages/Account.jsx";
 import Book from "./pages/Book.jsx";
 import BookingStatus from "./pages/BookingStatus.jsx";
@@ -27,6 +27,7 @@ function Routes() {
       <Header />
       <main>{page}</main>
       <Footer />
+      {!path.startsWith("/t/") && <TabBar path={path} />}
       <CartDrawer />
       <BusyOverlay />
     </>

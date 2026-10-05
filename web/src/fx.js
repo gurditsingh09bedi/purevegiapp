@@ -8,10 +8,16 @@
 
 export const calm = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export function buzz(ms = 12) {
+// Haptics. In the Pure Vegi app the phone's own haptic engine is used (iPhone + Android);
+// on the website, Android Chrome vibrates briefly. kind: a number (ms) or "success".
+export function buzz(kind = 12) {
+  if (window.ReactNativeWebView) {
+    try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: "haptic", kind: kind === "success" ? "success" : kind >= 15 ? "medium" : "light" })); } catch { /* ignore */ }
+    return;
+  }
   // Phones only allow vibration after the person has tapped the page.
   if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
-  try { navigator.vibrate?.(ms); } catch { /* not supported (iPhone) */ }
+  try { navigator.vibrate?.(kind === "success" ? [20, 40, 20] : kind); } catch { /* not supported (iPhone Safari) */ }
 }
 
 export function flyToCart(fromEl) {
@@ -103,7 +109,7 @@ export function confetti({ count = 140, y = 0.35 } = {}) {
     if (life < 1) requestAnimationFrame(step); else c.remove();
   };
   requestAnimationFrame(step);
-  buzz([20, 40, 20]);
+  buzz("success");
 }
 
 // Cross-fade pages (Chrome, Edge, Safari 18+). Elsewhere the page just changes, as before.
