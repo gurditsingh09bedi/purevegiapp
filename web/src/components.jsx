@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { busy, enableWebPush, webPushState } from "./api.js";
+import { flyToCart, tiltProps } from "./fx.js";
 import { money } from "./format.js";
 import { Link, navigate, openNow, useApp } from "./state.jsx";
 
@@ -62,7 +63,7 @@ export function DishArt({ item, big }) {
 export function DishCard({ item, onOpen }) {
   const sold = !item.is_available;
   return (
-    <button className={`dish ${sold ? "sold" : ""}`} onClick={() => !sold && onOpen(item)} disabled={sold}
+    <button className={`dish reveal ${sold ? "sold" : ""}`} onClick={() => !sold && onOpen(item)} disabled={sold} {...(sold ? {} : tiltProps())}
       aria-label={sold ? `${item.name}, sold out` : `${item.name}, ${money(item.price_pence)}. Add to basket`}>
       <DishArt item={item} />
       <div className="dish-body">
@@ -78,6 +79,7 @@ export function DishCard({ item, onOpen }) {
         </div>
       </div>
       {!sold && <span className="add-plus" aria-hidden="true">+</span>}
+      <span className="dish-glare" aria-hidden="true" />
     </button>
   );
 }
@@ -94,6 +96,7 @@ export function ItemModal({ item, onClose }) {
   });
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
+  const art = useRef(null);
 
   const toggle = (g, o) => setChosen((c) => {
     const cur = c[g.id] || [];
@@ -109,7 +112,7 @@ export function ItemModal({ item, onClose }) {
 
   return (
     <Modal onClose={onClose} label={item.name}>
-      <DishArt item={item} big />
+      <div ref={art}><DishArt item={item} big /></div>
       <h2>{item.name}</h2>
       {item.description && <p className="muted">{item.description}</p>}
       <div className="tags">
@@ -150,7 +153,7 @@ export function ItemModal({ item, onClose }) {
           <button onClick={() => setQty((q) => Math.min(50, q + 1))} aria-label="One more">+</button>
         </div>
         <button className="btn primary grow" disabled={!!missing}
-          onClick={() => { add(item, options, qty, notes.trim()); onClose(); }}>
+          onClick={() => { add(item, options, qty, notes.trim()); flyToCart(art.current?.firstElementChild); onClose(); }}>
           {missing ? `Choose ${missing.name}` : `Add ${qty} · ${money(unit * qty)}`}
         </button>
       </div>

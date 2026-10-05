@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, myOrderTokens, orderHeaders, orderSocket, store } from "../api.js";
 import { Modal, NotifyCard } from "../components.jsx";
+import { confetti } from "../fx.js";
 import { clock, money } from "../format.js";
 import { Link, useApp } from "../state.jsx";
 
@@ -28,6 +29,17 @@ export default function Track({ id }) {
   const [showReview, setShowReview] = useState(false);
 
   const first = useRef(true);
+
+  // Just ordered? Celebrate once, when the order is confirmed as paid / sent to the kitchen.
+  useEffect(() => {
+    if (!order || order.status === "pending_payment") return;
+    let flag = null;
+    try { flag = sessionStorage.getItem("pv_celebrate"); } catch { /* ignore */ }
+    if (flag === String(order.id)) {
+      try { sessionStorage.removeItem("pv_celebrate"); } catch { /* ignore */ }
+      setTimeout(() => confetti(), 250);
+    }
+  }, [order]);
   const load = useCallback(() => {
     const quiet = !first.current;
     first.current = false;

@@ -148,6 +148,7 @@ function Hero({ calm }) {
             aria-label="Pizza, wok, burgers and sizzlers being made in the Pure Vegi kitchen">
             <Sources name="hero" />
           </video>
+          {!calm && <div className="ff-steam" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
           <button className="ff-pause" onClick={toggle} aria-label={paused ? "Play video" : "Pause video"}>
             {paused ? "▶" : "❚❚"}
           </button>

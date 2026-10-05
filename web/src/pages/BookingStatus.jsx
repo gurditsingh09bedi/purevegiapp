@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, bookingHeaders, myBookingTokens } from "../api.js";
 import { NotifyCard } from "../components.jsx";
+import { confetti } from "../fx.js";
 import { dayAndTime, money } from "../format.js";
 import { Link, navigate, useApp } from "../state.jsx";
 
@@ -21,6 +22,14 @@ export default function BookingStatus({ id }) {
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const first = useRef(true);
+  const lastStatus = useRef(null);
+
+  // The restaurant just said yes while the customer is watching: celebrate.
+  useEffect(() => {
+    if (!b) return;
+    if (lastStatus.current === "pending" && b.status === "confirmed") confetti();
+    lastStatus.current = b.status;
+  }, [b]);
 
   // A link from a text message carries the token as ?t=..., keep it for next time.
   useEffect(() => {

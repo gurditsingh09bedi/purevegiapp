@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { DishCard, ItemModal } from "../components.jsx";
 import { money } from "../format.js";
 import FoodFilm from "../FoodFilm.jsx";
+import { reveal } from "../fx.js";
 import { openNow, useApp, useLoad } from "../state.jsx";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -26,6 +27,10 @@ export function MenuSection({ heading = "Our menu", banner = false }) {
     document.getElementById(`cat-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // Cards float up as they scroll into view.
+  const sectionRef = useRef(null);
+  useEffect(() => (menu.data && sectionRef.current ? reveal(sectionRef.current) : undefined), [menu.data, veganOnly]);
+
   // The film's "See the pizzas" style buttons ask for a category by name.
   useEffect(() => {
     const on = (e) => {
@@ -38,7 +43,7 @@ export function MenuSection({ heading = "Our menu", banner = false }) {
   }, [menu.data]);
 
   return (
-    <section id="menu" className="menu-section">
+    <section id="menu" className="menu-section" ref={sectionRef}>
       {banner && (
         <div className="menu-banner">
           <picture>

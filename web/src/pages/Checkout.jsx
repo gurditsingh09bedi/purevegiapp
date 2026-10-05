@@ -250,6 +250,7 @@ export function PayStep({ order }) {
   async function payReal() {
     setPaying(true);
     const { stripe, elements } = stripeRef.current;
+    try { sessionStorage.setItem("pv_celebrate", String(order.id)); } catch { /* ignore */ }
     const { error } = await stripe.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}/order/${order.id}` } });
     if (error) setState((s) => ({ ...s, error: error.message }));
     setPaying(false);
@@ -259,6 +260,7 @@ export function PayStep({ order }) {
     setPaying(true);
     try {
       await api(`/orders/${order.id}/test-pay`, { method: "POST", headers: orderHeaders(order.id) });
+      try { sessionStorage.setItem("pv_celebrate", String(order.id)); } catch { /* ignore */ }
       navigate(`/order/${order.id}`);
     } catch (e) {
       setState((s) => ({ ...s, error: e.message }));

@@ -61,6 +61,7 @@ export function TableCheckout() {
       });
       if (o.view_token) myOrderTokens.add(o.id, o.view_token);
       clear();
+      try { sessionStorage.setItem("pv_celebrate", String(o.id)); } catch { /* ignore */ }
       navigate(`/order/${o.id}`);
     } catch (e) {
       setError(e.message);

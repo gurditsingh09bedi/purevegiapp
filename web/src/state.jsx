@@ -1,18 +1,23 @@
 // App-wide state: route, cart, restaurant info, logged-in customer.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { api, auth, store } from "./api.js";
+import { pageTransition } from "./fx.js";
 
 // --- Routing (plain paths, so table QR links like /t/<token> work) --------------------
 export function navigate(to) {
-  if (to !== window.location.pathname + window.location.search) window.history.pushState({}, "", to);
-  window.dispatchEvent(new Event("pv:navigate"));
-  window.scrollTo({ top: 0 });
+  pageTransition(() => {
+    if (to !== window.location.pathname + window.location.search) window.history.pushState({}, "", to);
+    window.dispatchEvent(new Event("pv:navigate"));
+    window.scrollTo({ top: 0 });
+  });
 }
 
 export function usePath() {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
-    const on = () => setPath(window.location.pathname);
+    // flushSync: the new page must be on screen before the page transition takes its "after" snapshot
+    const on = () => flushSync(() => setPath(window.location.pathname));
     window.addEventListener("popstate", on);
     window.addEventListener("pv:navigate", on);
     return () => {
