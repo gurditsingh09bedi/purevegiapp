@@ -1,19 +1,21 @@
 """What customers can see without logging in: menu, slots, delivery quote, hours."""
 
 from datetime import date as Date
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..config import AppConfig
 from ..db import get_db
 from ..deps import config, now, settings
-from ..domain import delivery, slots
+from ..domain import delivery, kitchen, slots
+from ..domain.order_flow import Status
 from ..domain.settings import RestaurantSettings
-from ..models import Category, DiningTable, MenuItem, OptionGroup
+from ..models import Category, DiningTable, MenuItem, OptionGroup, Order
 from ..schemas import CategoryOut, QuoteIn, QuoteOut, SlotOut
 from ..security import decode_token
 from ..services.orders import day_bounds, occupied_slot_starts
@@ -21,10 +23,43 @@ from ..services.orders import day_bounds, occupied_slot_starts
 router = APIRouter(tags=["public"])
 
 
+def _busy(db: Session, s: RestaurantSettings, at) -> dict:
+    """Orders the kitchen has on: accepted or waiting, and not a pre-order for later than an hour."""
+    on = db.scalar(
+        select(func.count(Order.id)).where(
+            Order.status.in_([Status.PLACED, Status.ACCEPTED, Status.PREPARING]),
+            or_(Order.slot_start.is_(None), Order.slot_start <= at + timedelta(hours=1)),
+        )
+    ) or 0
+    load = kitchen.kitchen_load(on, s.default_prep_minutes, s.busy_orders, s.very_busy_orders, s.minutes_per_extra_order)
+    return {"level": load.level, "orders": load.orders, "wait_minutes": load.wait_minutes,
+            "paused": s.online_orders_paused, "open_now": slots.open_now(s, at)}
+
+
+def _special(db: Session, s: RestaurantSettings, at) -> dict | None:
+    if not s.special_item_id or s.special_day != at.astimezone(ZoneInfo(s.timezone)).date():
+        return None
+    item = db.get(MenuItem, s.special_item_id)
+    if item is None or not item.is_available or not item.category.is_active:
+        return None
+    return {"item_id": item.id, "note": s.special_note}
+
+
+@router.get("/restaurant/busy")
+def busy(db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings), at=Depends(now)):
+    """The busy meter: how busy the kitchen is now and roughly how long a new order takes."""
+    return _busy(db, s, at)
+
+
 @router.get("/restaurant")
-def restaurant(s: RestaurantSettings = Depends(settings), at=Depends(now)):
+def restaurant(db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings), at=Depends(now)):
     nxt = slots.next_opening(s, at)
     return {
+        "busy": _busy(db, s, at),
+        "special": _special(db, s, at),
+        "reviews": [r.model_dump() for r in s.reviews],
+        "google_rating": s.google_rating,
+        "google_review_count": s.google_review_count,
         "open_now": slots.open_now(s, at),
         "next_open": nxt.isoformat() if nxt else None,  # when closed: the next opening time
         "name": s.name,

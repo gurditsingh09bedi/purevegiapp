@@ -128,6 +128,12 @@ function SettingsForm({ initial, onSaved }) {
             <Field label="Ticket turns amber after (min)"><input type="number" min="1" value={s.ticket_amber_minutes} onChange={num("ticket_amber_minutes")} /></Field>
             <Field label="Ticket turns red after (min)"><input type="number" min="1" value={s.ticket_red_minutes} onChange={num("ticket_red_minutes")} /></Field>
           </div>
+          <h3>Busy meter on the website</h3>
+          <div className="grid2">
+            <Field label="“Busy” from (orders on the go)"><input type="number" min="1" value={s.busy_orders} onChange={num("busy_orders")} /></Field>
+            <Field label="“Very busy” from (orders)"><input type="number" min="2" value={s.very_busy_orders} onChange={num("very_busy_orders")} /></Field>
+            <Field label="Extra minutes per order" hint="Added to the prep time for each order beyond two"><input type="number" min="0" value={s.minutes_per_extra_order} onChange={num("minutes_per_extra_order")} /></Field>
+          </div>
         </section>
 
         <section className="card">
@@ -150,6 +156,12 @@ function SettingsForm({ initial, onSaved }) {
           </Field>
           <Field label="Show the review pop-up after (minutes)"><input type="number" min="0" value={s.review_prompt_delay_minutes} onChange={num("review_prompt_delay_minutes")} /></Field>
           <p className="muted">Sent to every customer with no reward attached, as Google's rules require.</p>
+          <h3>Reviews on the home page</h3>
+          <div className="grid2">
+            <Field label="Google star rating" hint="As shown on Google, e.g. 4.8"><input type="number" step="0.1" min="1" max="5" value={s.google_rating ?? ""} onChange={(e) => set("google_rating")(e.target.value === "" ? null : Number(e.target.value))} /></Field>
+            <Field label="Number of Google reviews"><input type="number" min="0" value={s.google_review_count ?? ""} onChange={(e) => set("google_review_count")(e.target.value === "" ? null : Number(e.target.value))} /></Field>
+          </div>
+          <ReviewsEditor list={s.reviews || []} onChange={set("reviews")} />
         </section>
 
         <section className="card">
@@ -173,5 +185,33 @@ function SettingsForm({ initial, onSaved }) {
         </section>
       </div>
     </form>
+  );
+}
+
+// Real reviews copied from Google (name, stars, words). Up to 12, shown as a moving strip.
+function ReviewsEditor({ list, onChange }) {
+  const upd = (i, k, v) => onChange(list.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="reviews-editor">
+      {list.length === 0 && <p className="muted">No reviews yet. Copy your favourite real reviews from Google here, word for word.</p>}
+      {list.map((r, i) => (
+        <div key={i} className="review-row">
+          <div className="grid2">
+            <Field label="Name"><input value={r.name} maxLength="60" onChange={(e) => upd(i, "name", e.target.value)} /></Field>
+            <Field label="Stars">
+              <select value={r.rating} onChange={(e) => upd(i, "rating", Number(e.target.value))}>
+                {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="Review"><textarea rows="2" maxLength="400" value={r.text} onChange={(e) => upd(i, "text", e.target.value)} /></Field>
+          <div className="row-form">
+            <Field label="When (optional)"><input value={r.when || ""} maxLength="40" placeholder="2 weeks ago" onChange={(e) => upd(i, "when", e.target.value)} /></Field>
+            <button type="button" className="btn ghost small" onClick={() => onChange(list.filter((_, j) => j !== i))}>Remove</button>
+          </div>
+        </div>
+      ))}
+      {list.length < 12 && <button type="button" className="btn small" onClick={() => onChange([...list, { name: "", rating: 5, text: "", when: "" }])}>+ Add a review</button>}
+    </div>
   );
 }

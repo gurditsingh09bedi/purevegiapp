@@ -1,7 +1,7 @@
 """End-to-end API test: a pre-order at 1 pm for a 7 pm delivery slot, through to the review prompt."""
 
 import typing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -355,3 +355,32 @@ def test_closed_at_night_order_ahead_only(client):
     got = got if got.tzinfo else got.replace(tzinfo=UTC)  # SQLite hands back naive UTC
     assert got == datetime.fromisoformat(times[0]["start"])
     assert c.get("/delivery/slots", params={"day": "2026-10-03"}).status_code == 200  # tomorrow can be booked
+
+
+def test_busy_meter_special_and_reviews(client):
+    from app import deps
+    from app.main import app
+
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    assert c.get("/restaurant/busy").json()["level"] == "quiet"
+    assert c.patch("/admin/settings", headers=owner, json={"busy_orders": 2, "very_busy_orders": 3}).status_code == 200
+    item = plain_item(c)
+    for _ in range(2):
+        r = c.post("/orders", json={"type": "collection", "customer_name": "T", "customer_phone": "07700900111",
+                                    "items": [{"menu_item_id": item, "quantity": 1}]}).json()
+        c.post(f"/orders/{r['id']}/test-pay", headers={"X-Order-Token": r["view_token"]})
+    busy = c.get("/restaurant/busy").json()
+    assert busy["orders"] == 2 and busy["level"] == "busy"
+    assert c.get("/restaurant").json()["busy"]["level"] == "busy"
+
+    r = c.patch("/admin/settings", headers=owner, json={
+        "special_item_id": item, "special_note": "Fresh today", "special_day": "2026-10-02",
+        "reviews": [{"name": "Harpreet", "rating": 5, "text": "Best paneer wrap in Brum"}], "google_rating": 4.8})
+    assert r.status_code == 200, r.text
+    info = c.get("/restaurant").json()
+    assert info["special"] == {"item_id": item, "note": "Fresh today"}
+    assert info["reviews"][0]["name"] == "Harpreet" and info["google_rating"] == 4.8
+    app.dependency_overrides[deps.now] = lambda: FROZEN + timedelta(days=1)
+    assert c.get("/restaurant").json()["special"] is None  # only on its day
+    assert c.patch("/admin/settings", headers=owner, json={"reviews": [{"name": "X", "rating": 9, "text": "y"}]}).status_code == 422

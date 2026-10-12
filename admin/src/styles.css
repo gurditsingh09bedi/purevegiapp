@@ -230,3 +230,11 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .booking-req { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
 .booking-req:first-of-type { border-top: 0; }
 .quiet-badge { background: #1d2b46; color: #dfe7ff; border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: .85rem; }
+.busy-chip { border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: .85rem; background: #eef6f0; color: #1f5a3a; }
+.busy-chip.lvl-busy { background: #fff1de; color: #7a4a0c; }
+.busy-chip.lvl-very_busy { background: #ffe4dc; color: #8f2a10; }
+.special-admin { margin-bottom: 16px; }
+.reviews-editor { display: flex; flex-direction: column; gap: 12px; }
+.review-row { border: 1px solid var(--line, #e5e0d2); border-radius: 12px; padding: 12px; }
+.nowrap { white-space: nowrap; }
+.card h3 { margin: 18px 0 8px; }

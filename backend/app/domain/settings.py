@@ -7,7 +7,7 @@ model and stores the result as JSON in the ``restaurant_settings`` table.
 
 from __future__ import annotations
 
-from datetime import time
+from datetime import date, time
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
@@ -31,6 +31,15 @@ class DayHours(BaseModel):
 def _default_week() -> dict[str, DayHours]:
     # Agreed: every day 12:00 pm - 10:30 pm.
     return {day: DayHours() for day in WEEKDAYS}
+
+
+class ReviewQuote(BaseModel):
+    """A real customer review, copied from Google by staff, shown on the home page."""
+
+    name: str = Field(min_length=1, max_length=60)
+    rating: int = Field(5, ge=1, le=5)
+    text: str = Field(min_length=1, max_length=400)
+    when: str = Field("", max_length=40)  # e.g. "2 weeks ago", as Google shows it
 
 
 class RestaurantSettings(BaseModel):
@@ -71,6 +80,15 @@ class RestaurantSettings(BaseModel):
     ticket_amber_minutes: int = Field(10, ge=1)
     ticket_red_minutes: int = Field(15, ge=1)
     online_orders_paused: bool = False
+    # Busy meter on the website: how many orders on the go count as "busy" / "very busy".
+    busy_orders: int = Field(4, ge=1, le=100)
+    very_busy_orders: int = Field(8, ge=2, le=200)
+    minutes_per_extra_order: int = Field(3, ge=0, le=30)
+
+    # --- Today's special (shown on the home page on that day only) ------------
+    special_item_id: int | None = None
+    special_note: str = Field("", max_length=160)
+    special_day: date | None = None
 
     # --- Dine-in booking ------------------------------------------------------
     bookings_enabled: bool = True
@@ -86,6 +104,9 @@ class RestaurantSettings(BaseModel):
     # --- Reviews ------------------------------------------------------------
     google_review_url: HttpUrl | None = None  # "Ask for reviews" link from Google Business Profile
     review_prompt_delay_minutes: int = Field(45, ge=0, le=24 * 60)
+    reviews: list[ReviewQuote] = Field(default_factory=list, max_length=12)
+    google_rating: float | None = Field(None, ge=1, le=5)  # e.g. 4.8, as shown on Google
+    google_review_count: int | None = Field(None, ge=0)
 
     @model_validator(mode="after")
     def _check(self) -> RestaurantSettings:
@@ -93,6 +114,8 @@ class RestaurantSettings(BaseModel):
             raise ValueError("delivery start must be before delivery end")
         if self.ticket_amber_minutes >= self.ticket_red_minutes:
             raise ValueError("amber warning must come before red")
+        if self.busy_orders >= self.very_busy_orders:
+            raise ValueError("'very busy' must be more orders than 'busy'")
         if self.free_radius_miles > self.max_radius_miles:
             raise ValueError("free radius cannot be larger than the delivery area")
         missing = set(WEEKDAYS) - set(self.opening_hours)

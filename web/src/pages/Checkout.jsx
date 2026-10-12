@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, lookupPostcode, myOrderTokens, orderHeaders, STRIPE_PK } from "../api.js";
 import { clock, money, orderDays, ukDay, whenOpen } from "../format.js";
+import { BusyMeter, useKitchenLoad } from "../extras.jsx";
 import { Link, native, navigate, openNow, useApp, useLoad } from "../state.jsx";
 
 const TIPS = [0, 100, 200, 300];
@@ -22,6 +23,7 @@ export default function Checkout() {
   const [slot, setSlot] = useState(null);
   const [day, setDay] = useState(null); // UK date "YYYY-MM-DD" for the slot / pick-up time
   const [collectAt, setCollectAt] = useState("asap"); // "asap" or an ISO pick-up time
+  const load = useKitchenLoad();
   const [promo, setPromo] = useState("");
   const [tip, setTip] = useState(0);
   const [notes, setNotes] = useState("");
@@ -138,6 +140,7 @@ export default function Checkout() {
               {d?.enabled && <button type="button" role="radio" aria-checked={type === "delivery"} className={type === "delivery" ? "on" : ""} onClick={() => setType("delivery")}>Delivery</button>}
               {restaurant?.collection_enabled !== false && <button type="button" role="radio" aria-checked={type === "collection"} className={type === "collection" ? "on" : ""} onClick={() => setType("collection")}>Collection</button>}
             </div>
+            <BusyMeter compact />
           </section>
 
           <section className="panel">
@@ -152,7 +155,7 @@ export default function Checkout() {
             {type === "collection" && !closed && pickDay === days[0].key && (
               <div className="slots" role="radiogroup" aria-label="Collection time">
                 <button type="button" role="radio" aria-checked={collectAt === "asap"} className={`slot asap ${collectAt === "asap" ? "on" : ""}`} onClick={() => setCollectAt("asap")}>
-                  <b>ASAP</b><span>about {restaurant?.default_prep_minutes || 20} min</span>
+                  <b>ASAP</b><span>about {load?.wait_minutes || restaurant?.default_prep_minutes || 20} min</span>
                 </button>
               </div>
             )}

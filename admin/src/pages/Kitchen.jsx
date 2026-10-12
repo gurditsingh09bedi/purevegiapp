@@ -18,6 +18,13 @@ const URGENCY_WORD = { waiting: "Pre-order", ok: "On time", amber: "Getting late
 export default function Kitchen() {
   const [tickets, setTickets] = useState(null);
   const [info, setInfo] = useState(null);
+  const [meter, setMeter] = useState(null); // busy meter, as customers see it
+  useEffect(() => {
+    const get = () => api("/restaurant/busy").then(setMeter).catch(() => {});
+    get();
+    const t = setInterval(get, 20000);
+    return () => clearInterval(t);
+  }, []);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
   const known = useRef(null);
@@ -156,6 +163,7 @@ export default function Kitchen() {
         <span className="muted">{new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}</span>
         <div className="spacer" />
         {error && <span className="error">Offline: {error}</span>}
+        {meter && kitchenAwake(new Date(now)) && <span className={`busy-chip lvl-${meter.level}`} title="What customers see on the website">{{ quiet: "🟢 Quiet", busy: "🟠 Busy", very_busy: "🔴 Very busy" }[meter.level]} · {meter.orders} on · ~{meter.wait_minutes} min</span>}
         {info && !kitchenAwake(new Date(now)) && <span className="quiet-badge" title="Orders placed now are for later. Voice announcements start 30 minutes before opening.">🌙 Closed · quiet hours</span>}
         <button className={`btn ${soundOn && ready ? "ghost" : "danger"}`} onClick={toggleSound} aria-pressed={soundOn}>
           {soundOn && ready ? "🔊 Sound on" : soundOn ? "🔇 Tap to turn on sound" : "🔇 Sound off"}

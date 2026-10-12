@@ -10,6 +10,16 @@ const blankItem = (category_id) => ({
 
 export default function Menu() {
   const state = useLoad(() => api("/admin/menu"));
+  const conf = useLoad(() => api("/admin/settings"));
+  const [specialFor, setSpecialFor] = useState(null);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+  const sp = conf.data && conf.data.special_day === today ? conf.data.special_item_id : null;
+  const spItem = sp && (state.data || []).flatMap((c) => c.items).find((i) => i.id === sp);
+
+  async function clearSpecial() {
+    const ok = await attempt(() => api("/admin/settings", { method: "PATCH", body: { special_item_id: null, special_day: null, special_note: "" } }), "Today's special removed");
+    if (ok) conf.reload();
+  }
   const [editing, setEditing] = useState(null);
   const [newCat, setNewCat] = useState("");
 
@@ -40,6 +50,21 @@ export default function Menu() {
           <button className="btn" disabled={!newCat.trim()}>Add category</button>
         </form>
       </PageHead>
+
+      <section className="card special-admin">
+        {spItem ? (
+          <div className="card-head">
+            <div><h2>★ Today's special: {spItem.name}</h2>{conf.data.special_note && <p className="muted">“{conf.data.special_note}”</p>}
+              <p className="muted small">Shown at the top of the menu on the website and app until midnight.</p></div>
+            <div className="page-actions">
+              <button className="btn ghost small" onClick={() => setSpecialFor(spItem)}>Change note</button>
+              <button className="btn ghost small" onClick={clearSpecial}>Remove</button>
+            </div>
+          </div>
+        ) : (
+          <p className="muted">★ No special today. Tap <b>“★ Special”</b> next to any dish to feature it at the top of the menu for today.</p>
+        )}
+      </section>
 
       <Loading state={state}>
         {(cats) =>
@@ -72,7 +97,10 @@ export default function Menu() {
                               {it.is_available ? "On sale · mark sold out" : "Sold out · put back"}
                             </button>
                           </td>
-                          <td><button className="btn ghost small" onClick={() => setEditing(it)}>Edit</button></td>
+                          <td className="nowrap">
+                            <button className="btn ghost small" onClick={() => setEditing(it)}>Edit</button>{" "}
+                            <button className={`btn small ${sp === it.id ? "primary" : "ghost"}`} disabled={!it.is_available} onClick={() => setSpecialFor(it)} title="Feature as today's special">★ Special</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -84,6 +112,8 @@ export default function Menu() {
         }
       </Loading>
 
+      {specialFor && <SpecialEditor item={specialFor} note={sp === specialFor.id ? conf.data.special_note : ""} day={today}
+        onClose={() => setSpecialFor(null)} onSaved={() => { setSpecialFor(null); conf.reload(); }} />}
       {editing && <ItemEditor item={editing} cats={state.data || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); state.reload(); }} />}
     </>
   );
@@ -149,6 +179,31 @@ function ItemEditor({ item, cats, onClose, onSaved }) {
         <div className="modal-actions">
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary">{f.id ? "Save dish" : "Add dish"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SpecialEditor({ item, note: initial, day, onClose, onSaved }) {
+  const [note, setNote] = useState(initial || "");
+  async function save(e) {
+    e.preventDefault();
+    const ok = await attempt(() => api("/admin/settings", { method: "PATCH", body: { special_item_id: item.id, special_day: day, special_note: note.trim() } }),
+      `${item.name} is today's special`);
+    if (ok) onSaved();
+  }
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={save}>
+        <h2>★ Today's special: {item.name}</h2>
+        <Field label="A line for customers (optional)" hint="e.g. Fresh paneer, made this morning. Only today.">
+          <input value={note} maxLength="160" onChange={(e) => setNote(e.target.value)} autoFocus />
+        </Field>
+        <p className="muted small">It shows at the top of the menu until midnight, then disappears by itself.</p>
+        <div className="modal-actions">
+          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary">Feature it today</button>
         </div>
       </form>
     </div>

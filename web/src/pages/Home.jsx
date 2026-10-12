@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { ClosedBanner, DishCard, ItemModal } from "../components.jsx";
 import { money } from "../format.js";
+import { BusyMeter, ReviewsStrip, TodaysSpecial } from "../extras.jsx";
 import FoodFilm from "../FoodFilm.jsx";
 import { reveal } from "../fx.js";
 import { openNow, useApp, useLoad } from "../state.jsx";
@@ -56,6 +57,7 @@ export function MenuSection({ heading = "Our menu", banner = false }) {
           </div>
         </div>
       )}
+      {banner && <TodaysSpecial menu={menu.data} onOpen={setOpen} />}
       <div className="menu-head">
         <h2>{heading}</h2>
         <label className="switch">
@@ -105,7 +107,7 @@ export default function Home() {
       <FoodFilm />
       {restaurant?.online_orders_paused && <p className="notice paused-banner">We're very busy right now and have paused online orders for a few minutes. Please try again shortly.</p>}
 
-      <div className="closed-wrap"><ClosedBanner /></div>
+      <div className="closed-wrap"><ClosedBanner /><BusyMeter /></div>
       <section className="facts" aria-label="Opening and delivery">
         <div className="fact"><b>{open === null ? "Opening hours" : open ? "Open now" : "Closed now"}</b><span>{todayText}</span></div>
         {d?.enabled && <div className="fact"><b>Delivery {t12(d.hours[0].slice(0, 5))}–{t12(d.hours[1].slice(0, 5))}</b><span>Pick a 15-minute slot</span></div>}
@@ -114,6 +116,8 @@ export default function Home() {
       </section>
 
       <MenuSection banner />
+
+      <ReviewsStrip />
 
       <section className="visit">
         <div>

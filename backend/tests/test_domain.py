@@ -251,3 +251,13 @@ def test_closed_at_2am_order_ahead_for_today_or_tomorrow():
     one_pm = at(13)
     assert slots.open_now(s, one_pm) and slots.next_opening(s, one_pm) == one_pm
     assert slots.collection_times(DAY, s, one_pm)[0] == at(13, 15)
+
+
+def test_busy_meter_levels_and_wait():
+    assert kitchen.kitchen_load(0, 15, 4, 8, 3) == kitchen.KitchenLoad("quiet", 0, 15)
+    assert kitchen.kitchen_load(2, 15, 4, 8, 3).wait_minutes == 15  # first two cook alongside
+    assert kitchen.kitchen_load(4, 15, 4, 8, 3) == kitchen.KitchenLoad("busy", 4, 21)
+    assert kitchen.kitchen_load(9, 15, 4, 8, 3).level == "very_busy"
+    assert kitchen.kitchen_load(500, 15, 4, 8, 3).wait_minutes == 120  # capped
+    with pytest.raises(ValidationError):
+        RestaurantSettings(busy_orders=8, very_busy_orders=8)

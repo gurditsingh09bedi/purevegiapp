@@ -65,3 +65,18 @@ def sort_queue(tickets: Iterable[TicketTiming], default_prep: int) -> list[Ticke
         tickets,
         key=lambda t: (t.status is not Status.PLACED, cook_at(t, default_prep), t.created_at, t.order_id),
     )
+
+
+@dataclass(frozen=True)
+class KitchenLoad:
+    level: str  # "quiet" | "busy" | "very_busy"
+    orders: int  # orders on the go (being cooked, or due within the hour)
+    wait_minutes: int  # roughly how long a new ASAP order takes
+
+
+def kitchen_load(orders: int, default_prep: int, busy: int, very_busy: int, per_extra: int) -> KitchenLoad:
+    """The busy meter: more orders on the go means a longer wait for a new order.
+    The first couple of orders cook alongside each other, so they add nothing."""
+    level = "very_busy" if orders >= very_busy else "busy" if orders >= busy else "quiet"
+    wait = default_prep + max(0, orders - 2) * per_extra
+    return KitchenLoad(level, orders, min(wait, 120))
