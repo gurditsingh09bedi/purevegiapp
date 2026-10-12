@@ -31,6 +31,12 @@ def client(tmp_path, monkeypatch):
     app.dependency_overrides.clear()
 
 
+def plain_item(c):
+    """A dish with no required choices (e.g. a side), for tests that don't care which."""
+    return next(i["id"] for cat in c.get("/menu").json() for i in cat["items"]
+                if i["is_available"] and not any(g["min_choices"] for g in i["option_groups"]))
+
+
 def login(c, email, pw):
     r = c.post("/auth/login", json={"email": email, "password": pw})
     assert r.status_code == 200, r.text
@@ -57,7 +63,7 @@ def test_pre_order_to_review_prompt(client):
     assert len(slots) == 20 and slots[0]["label"] == "5pm–5:15pm"
     seven = next(s for s in slots if s["label"].startswith("7pm"))
 
-    item_id = c.get("/menu").json()[0]["items"][0]["id"]
+    item_id = plain_item(c)
     body = {"type": "delivery", "items": [{"menu_item_id": item_id, "quantity": 2}], "slot_start": seven["start"],
             "address": {"line1": "1 Test St", "postcode": "B21 9AA", "lat": 52.5163, "lng": -1.9310}}
     r = c.post("/orders", headers=me, json=body)
@@ -89,7 +95,7 @@ def test_full_slot_is_first_come_first_served(client):
     owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
     c.patch("/admin/settings", headers=owner, json={"drivers_on_shift": 1})
     seven = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
-    item_id = c.get("/menu").json()[0]["items"][0]["id"]
+    item_id = plain_item(c)
     body = {"type": "delivery", "customer_name": "A", "customer_phone": "07700900002",
             "items": [{"menu_item_id": item_id, "quantity": 1}], "slot_start": seven["start"],
             "address": {"line1": "x", "postcode": "B21", "lat": 52.51, "lng": -1.93}}
@@ -107,7 +113,7 @@ def test_beyond_two_miles_costs_two_pounds(client):
 
 def test_guest_orders_pays_in_test_mode_and_tracks_with_token(client):
     c = client
-    item_id = c.get("/menu").json()[0]["items"][0]["id"]
+    item_id = plain_item(c)
     seven = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
     body = {"type": "delivery", "customer_name": "Guest", "customer_phone": "07700900003",
             "items": [{"menu_item_id": item_id, "quantity": 1}], "slot_start": seven["start"],
@@ -291,3 +297,35 @@ def test_booking_updates_go_out_on_every_channel(client):
     hosts = [r.url.host for r in calls]
     assert hosts.count("fcm.googleapis.com") == 2 and hosts.count("api.sms-gate.app") == 2
     assert len(SMTP.sent) == 2 and any("Cake is on us!" in m.get_body(("plain",)).get_content() for m in SMTP.sent)
+
+
+def test_leaflet_menu_sizes_toppings_and_meal_upgrade(client):
+    """Pizza price follows the size; toppings are priced for that size only; a meal needs a can."""
+    c = client
+    menu = c.get("/menu").json()
+    assert [cat["name"] for cat in menu][:3] == ["Pizzas", "Burgers", "Wraps"]
+    marg = next(i for i in menu[0]["items"] if i["name"] == "Margarita")
+    opt = {(g["name"], o["name"]): o["id"] for g in marg["option_groups"] for o in g["options"]}
+    groups = {g["name"]: g for g in marg["option_groups"]}
+    assert groups["Extra toppings (80p each)"]["shown_if"] == '10" (6 slices)'
+    ten, fourteen = opt[("Size", '10" (6 slices)')], opt[("Size", '14" (10 slices)')]
+    olives10, paneer10 = opt[("Extra toppings (80p each)", "Olives")], opt[("Extra toppings (80p each)", "Paneer")]
+    olives14 = opt[("Extra toppings (£1.20 each)", "Olives")]
+
+    def order(item_id, option_ids):
+        return c.post("/orders", json={"type": "collection", "customer_name": "T", "customer_phone": "07700900111",
+                                       "items": [{"menu_item_id": item_id, "quantity": 1, "option_ids": option_ids}]})
+
+    r = order(marg["id"], [ten, olives10, paneer10])
+    assert r.status_code == 201, r.text
+    assert r.json()["subtotal_pence"] == 650 + 80 + 80          # 10" £6.50 + two toppings at 80p
+    assert order(marg["id"], [ten, olives14]).status_code == 400  # 14" topping on a 10" pizza
+    assert order(marg["id"], []).status_code == 400               # size is required
+    assert order(marg["id"], [fourteen]).json()["subtotal_pence"] == 999
+
+    burger = next(i for i in menu[1]["items"] if i["name"] == "Veggie Burger")
+    b = {(g["name"], o["name"]): o["id"] for g in burger["option_groups"] for o in g["options"]}
+    meal, coke = b[("Make it a meal", "Fries + can of pop")], b[("Choose your can", "Coke")]
+    assert order(burger["id"], [meal]).status_code == 400          # meal needs a can
+    assert order(burger["id"], [coke]).status_code == 400          # can only comes with the meal
+    assert order(burger["id"], [meal, coke]).json()["subtotal_pence"] == 450 + 249

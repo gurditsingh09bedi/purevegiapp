@@ -83,7 +83,8 @@ class MenuItem(Base):
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)  # false = "86" / sold out
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     category: Mapped[Category] = relationship(back_populates="items")
-    option_groups: Mapped[list[OptionGroup]] = relationship(back_populates="item", cascade="all, delete-orphan")
+    option_groups: Mapped[list[OptionGroup]] = relationship(back_populates="item", cascade="all, delete-orphan",
+                                                            order_by=lambda: [OptionGroup.sort_order, OptionGroup.id])
 
 
 class OptionGroup(Base):
@@ -95,8 +96,12 @@ class OptionGroup(Base):
     name: Mapped[str] = mapped_column(String(80))
     min_choices: Mapped[int] = mapped_column(Integer, default=0)
     max_choices: Mapped[int] = mapped_column(Integer, default=1)
+    # Only offered when an option with this name is chosen in another group of the same dish,
+    # e.g. "Extra toppings (80p each)" only with 10", or "Choose your can" only with the meal upgrade.
+    shown_if: Mapped[str | None] = mapped_column(String(80))
+    sort_order: Mapped[int | None] = mapped_column(Integer)
     item: Mapped[MenuItem] = relationship(back_populates="option_groups")
-    options: Mapped[list[Option]] = relationship(back_populates="group", cascade="all, delete-orphan")
+    options: Mapped[list[Option]] = relationship(back_populates="group", cascade="all, delete-orphan", order_by="Option.id")
 
 
 class Option(Base):

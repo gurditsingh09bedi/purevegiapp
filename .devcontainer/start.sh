@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 
 python -c "import fastapi, sqlalchemy, cryptography" 2>/dev/null || (cd backend && pip install --quiet ".[dev]")
 [ -f backend/.env ] || bash .devcontainer/setup.sh
+# The Pure Vegi leaflet menu replaces the old sample dishes (once; later edits in the staff app are kept).
+(cd backend && python -m app.menu_import --if-sample)
 # Keys for browser notifications (made once, kept in backend/.env).
 if ! grep -q "^PV_VAPID_PUBLIC_KEY=." backend/.env; then
   (cd backend && python -m app.vapid >> .env) && echo "Made browser notification keys"

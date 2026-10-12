@@ -69,7 +69,7 @@ export function DishCard({ item, onOpen }) {
       <div className="dish-body">
         <div className="dish-top">
           <h3>{item.name}</h3>
-          <span className="price">{money(item.price_pence)}</span>
+          <span className="price">{item.option_groups.some((g) => g.min_choices && g.options.some((o) => o.price_pence > 0)) ? "from " : ""}{money(item.price_pence)}</span>
         </div>
         {item.description && <p className="dish-desc">{item.description}</p>}
         <div className="tags">
@@ -106,8 +106,12 @@ export function ItemModal({ item, onClose }) {
     return { ...c, [g.id]: [...cur, o.id] };
   });
 
-  const options = item.option_groups.flatMap((g) => g.options.filter((o) => (chosen[g.id] || []).includes(o.id)));
-  const missing = item.option_groups.find((g) => (chosen[g.id] || []).length < g.min_choices);
+  // Some groups only apply after a choice elsewhere (pizza toppings priced by size, "choose your can" with a meal).
+  const picked = (groups) => groups.flatMap((g) => g.options.filter((o) => (chosen[g.id] || []).includes(o.id)));
+  const pickedNames = new Set(picked(item.option_groups.filter((g) => !g.shown_if)).map((o) => o.name));
+  const visible = item.option_groups.filter((g) => !g.shown_if || pickedNames.has(g.shown_if));
+  const options = picked(visible);
+  const missing = visible.find((g) => (chosen[g.id] || []).length < g.min_choices);
   const unit = item.price_pence + options.reduce((s, o) => s + o.price_pence, 0);
 
   return (
@@ -120,15 +124,17 @@ export function ItemModal({ item, onClose }) {
         {item.spice_level > 0 && <span className="tag spice">{SPICE[item.spice_level]}</span>}
       </div>
       <p className="allergen-line">
-        <b>Allergens:</b> {item.allergens.length ? item.allergens.join(", ") : "none listed"}.
-        {" "}Please tell us about any allergy before ordering.
+        {item.allergens.length
+          ? <><b>Allergens:</b> {item.allergens.join(", ")}. Please tell us about any allergy before ordering.</>
+          : <><b>Allergies?</b> Please ask us about ingredients before ordering: call 0121 554 7949 or add a note.</>}
       </p>
 
-      {item.option_groups.map((g) => (
-        <fieldset key={g.id} className="opt-group">
+      {visible.map((g) => (
+        <fieldset key={g.id} className={`opt-group ${g.shown_if ? "opt-follow" : ""}`}>
           <legend>
             {g.name}
-            <span className="muted"> · {g.min_choices ? "required" : "optional"}{g.max_choices > 1 ? `, up to ${g.max_choices}` : ""}</span>
+            <span className="muted"> · {g.min_choices > 1 && g.min_choices === g.max_choices ? `choose ${g.min_choices}`
+              : `${g.min_choices ? "required" : "optional"}${g.max_choices > 1 && g.max_choices < g.options.length ? `, up to ${g.max_choices}` : ""}`}</span>
           </legend>
           {g.options.map((o) => (
             <label key={o.id} className={`opt ${o.is_available ? "" : "off"}`}>

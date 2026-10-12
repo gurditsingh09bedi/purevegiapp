@@ -115,9 +115,11 @@ def _apply_item(item: MenuItem, body: MenuItemIn) -> None:
             name=g.name,
             min_choices=g.min_choices,
             max_choices=g.max_choices,
+            shown_if=g.shown_if or None,
+            sort_order=i,
             options=[Option(name=o.name, price_pence=o.price_pence, is_available=o.is_available) for o in g.options],
         )
-        for g in body.option_groups
+        for i, g in enumerate(body.option_groups)
     ]
 
 

@@ -75,6 +75,7 @@ class OptionGroupIO(ORM):
     name: str
     min_choices: int = Field(0, ge=0)
     max_choices: int = Field(1, ge=1)
+    shown_if: str | None = Field(None, max_length=80)  # offered only when this option (by name) is chosen
     options: list[OptionIO] = []
 
 

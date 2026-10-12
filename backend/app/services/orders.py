@@ -86,8 +86,14 @@ def _price_item(db: Session, line: OrderItemIn) -> OrderItem:
     for opt in chosen:
         if opt is None or opt.group_id not in group_ids or not opt.is_available:
             raise OrderError(f"an option for {item.name} is not available")
+    chosen_names = {o.name for o in chosen}
     for g in item.option_groups:
         n = sum(1 for o in chosen if o.group_id == g.id)
+        if g.shown_if and g.shown_if not in chosen_names:
+            # e.g. 14" toppings picked with a 7" pizza: not offered, so not allowed
+            if n:
+                raise OrderError(f"{g.name} doesn't go with your choices for {item.name}")
+            continue
         if n < g.min_choices or n > g.max_choices:
             raise OrderError(f"choose {g.min_choices}-{g.max_choices} for {g.name} on {item.name}")
     unit = item.price_pence + sum(o.price_pence for o in chosen)
