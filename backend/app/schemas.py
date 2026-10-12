@@ -180,6 +180,8 @@ class OrderCreate(BaseModel):
     table_token: str | None = None
     # set by the Pure Vegi app so guests get push updates for this order
     push_token: str | None = Field(None, max_length=300)
+    # collection: a pick-up time from /collection/times (needed when we're closed; empty = as soon as possible)
+    collect_at: datetime | None = None
     customer_email: str | None = Field(None, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
     @model_validator(mode="after")

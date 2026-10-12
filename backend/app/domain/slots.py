@@ -109,8 +109,52 @@ def slot_availability(
 
 
 def bookable_days(settings: RestaurantSettings, now: datetime) -> list[date]:
+    """Today and at least tomorrow, so late-night visitors (or anyone when we're closed) can order ahead."""
     today = now.astimezone(ZoneInfo(settings.timezone)).date()
-    return [today + timedelta(days=i) for i in range(settings.max_days_ahead + 1)]
+    return [today + timedelta(days=i) for i in range(max(settings.max_days_ahead, 1) + 1)]
+
+
+def collection_times(day: date, settings: RestaurantSettings, now: datetime, step: int = 15) -> list[datetime]:
+    """Pick-up times for a collection order on ``day``: every 15 minutes while we're open, from
+    opening + prep time until 15 minutes before closing, and never sooner than now + prep time."""
+    hours = settings.opening_hours[WEEKDAYS[day.weekday()]]
+    if hours.closed:
+        return []
+    tz = ZoneInfo(settings.timezone)
+    prep = timedelta(minutes=settings.default_prep_minutes)
+    t = datetime.combine(day, hours.opens, tz) + prep
+    if t.minute % step:
+        t += timedelta(minutes=step - t.minute % step)
+    t = t.replace(second=0, microsecond=0)
+    last = datetime.combine(day, hours.closes, tz) - timedelta(minutes=step)
+    earliest = now + prep
+    out = []
+    while t <= last:
+        if t >= earliest:
+            out.append(t)
+        t += timedelta(minutes=step)
+    return out
+
+
+def next_opening(settings: RestaurantSettings, now: datetime) -> datetime | None:
+    """When we next open (or ``now`` if we're open). None if every day is marked closed."""
+    if open_now(settings, now):
+        return now
+    tz = ZoneInfo(settings.timezone)
+    today = now.astimezone(tz).date()
+    for i in range(8):
+        day = today + timedelta(days=i)
+        h = settings.opening_hours[WEEKDAYS[day.weekday()]]
+        opens = datetime.combine(day, h.opens, tz)
+        if not h.closed and opens > now:
+            return opens
+    return None
+
+
+def open_now(settings: RestaurantSettings, now: datetime) -> bool:
+    local = now.astimezone(ZoneInfo(settings.timezone))
+    h = settings.opening_hours[WEEKDAYS[local.weekday()]]
+    return not h.closed and h.opens <= local.time() < h.closes
 
 
 def check_slot(

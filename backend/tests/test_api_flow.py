@@ -329,3 +329,29 @@ def test_leaflet_menu_sizes_toppings_and_meal_upgrade(client):
     assert order(burger["id"], [meal]).status_code == 400          # meal needs a can
     assert order(burger["id"], [coke]).status_code == 400          # can only comes with the meal
     assert order(burger["id"], [meal, coke]).json()["subtotal_pence"] == 450 + 249
+
+
+def test_closed_at_night_order_ahead_only(client):
+    """2am: no 'as soon as possible' collection; a pick-up time from the list works; tomorrow's delivery slots open."""
+    from app import deps
+    from app.main import app
+
+    c = client
+    night = datetime(2026, 10, 2, 1, 0, tzinfo=UTC)  # 2am in London
+    app.dependency_overrides[deps.now] = lambda: night
+    info = c.get("/restaurant").json()
+    assert info["open_now"] is False and info["next_open"].startswith("2026-10-02T12:00")
+    item = plain_item(c)
+    base = {"type": "collection", "customer_name": "T", "customer_phone": "07700900111",
+            "items": [{"menu_item_id": item, "quantity": 1}]}
+    r = c.post("/orders", json=base)
+    assert r.status_code == 409 and "collection time" in r.json()["detail"]
+    times = c.get("/collection/times").json()
+    assert times[0]["label"] == "12:15pm"
+    assert c.post("/orders", json={**base, "collect_at": "2026-10-02T03:00:00+01:00"}).status_code == 409  # not offered
+    r = c.post("/orders", json={**base, "collect_at": times[0]["start"]})
+    assert r.status_code == 201, r.text
+    got = datetime.fromisoformat(r.json()["slot_start"])
+    got = got if got.tzinfo else got.replace(tzinfo=UTC)  # SQLite hands back naive UTC
+    assert got == datetime.fromisoformat(times[0]["start"])
+    assert c.get("/delivery/slots", params={"day": "2026-10-03"}).status_code == 200  # tomorrow can be booked

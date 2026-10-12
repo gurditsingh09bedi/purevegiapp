@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, lookupPostcode, myOrderTokens, orderHeaders, STRIPE_PK } from "../api.js";
-import { clock, money } from "../format.js";
+import { clock, money, orderDays, ukDay, whenOpen } from "../format.js";
 import { Link, native, navigate, openNow, useApp, useLoad } from "../state.jsx";
 
 const TIPS = [0, 100, 200, 300];
@@ -20,6 +20,8 @@ export default function Checkout() {
   const [quote, setQuote] = useState(null);
   const [checking, setChecking] = useState(false);
   const [slot, setSlot] = useState(null);
+  const [day, setDay] = useState(null); // UK date "YYYY-MM-DD" for the slot / pick-up time
+  const [collectAt, setCollectAt] = useState("asap"); // "asap" or an ISO pick-up time
   const [promo, setPromo] = useState("");
   const [tip, setTip] = useState(0);
   const [notes, setNotes] = useState("");
@@ -32,7 +34,18 @@ export default function Checkout() {
     if (restaurant && !restaurant.delivery?.enabled && restaurant.collection_enabled) setType("collection");
   }, [restaurant]);
 
-  const slots = useLoad(() => (type === "delivery" ? api("/delivery/slots") : Promise.resolve([])), [type]);
+  // Closed (e.g. 2am)? Then orders are for later only: start on the day we next open.
+  const closed = restaurant ? (typeof restaurant.open_now === "boolean" ? !restaurant.open_now : openNow(restaurant) === false) : false;
+  const days = orderDays();
+  const openDay = restaurant?.next_open ? ukDay(restaurant.next_open) : days[0].key;
+  const pickDay = day || (closed && days.some((x) => x.key === openDay) ? openDay : days[0].key);
+  useEffect(() => { if (closed) setCollectAt((c) => (c === "asap" ? null : c)); }, [closed]);
+
+  const slots = useLoad(
+    () => (type === "delivery" ? api(`/delivery/slots?day=${pickDay}`) : api(`/collection/times?day=${pickDay}`)),
+    [type, pickDay],
+  );
+  const chooseDay = (k) => { setDay(k); setSlot(null); if (collectAt !== "asap") setCollectAt(closed ? null : "asap"); };
 
   if (placed) return <PayStep order={placed} />;
 
@@ -66,9 +79,11 @@ export default function Checkout() {
   const fee = type === "delivery" && quote ? quote.fee_pence : 0;
   const total = subtotal + fee + tip;
   const belowMin = type === "delivery" && d && subtotal < d.min_order_pence;
-  const collectionClosed = type === "collection" && openNow(restaurant) === false;
   const ready = name.trim() && phone.trim().length >= 10 &&
-    (type === "collection" ? !collectionClosed : quote && slot && line1.trim() && !belowMin);
+    (type === "collection" ? Boolean(collectAt) : quote && slot && line1.trim() && !belowMin);
+  const dayLabel = days.find((x) => x.key === pickDay)?.label.toLowerCase() || "that day";
+  const nothingLeft = slots.data && slots.data.length === 0;
+  const otherDay = days.find((x) => x.key !== pickDay);
 
   async function placeOrder(e) {
     e.preventDefault();
@@ -85,6 +100,7 @@ export default function Checkout() {
       push_token: native()?.pushToken || null,
       items: cart.map((l) => ({ menu_item_id: l.itemId, quantity: l.quantity, option_ids: l.optionIds, notes: l.notes || "" })),
     };
+    if (type === "collection" && collectAt !== "asap") body.collect_at = collectAt;
     if (type === "delivery") {
       body.slot_start = slot.start;
       body.address = { line1: line1.trim(), line2: line2.trim(), postcode: geo.postcode, lat: geo.lat, lng: geo.lng, notes: addrNotes.trim() };
@@ -105,6 +121,15 @@ export default function Checkout() {
   return (
     <form className="page checkout" onSubmit={placeOrder}>
       <h1>Checkout</h1>
+      {closed && (
+        <div className="closed-banner" role="status">
+          <span className="closed-moon" aria-hidden="true">🌙</span>
+          <div>
+            <b>We're closed right now{restaurant?.next_open ? `, and open again ${whenOpen(restaurant.next_open)}` : ""}.</b>
+            <p>You can still order now for later: pick a {type === "delivery" ? "delivery slot" : "collection time"} below and the kitchen will have it ready on time.</p>
+          </div>
+        </div>
+      )}
       <div className="checkout-grid">
         <div className="checkout-main">
           <section className="panel">
@@ -113,7 +138,49 @@ export default function Checkout() {
               {d?.enabled && <button type="button" role="radio" aria-checked={type === "delivery"} className={type === "delivery" ? "on" : ""} onClick={() => setType("delivery")}>Delivery</button>}
               {restaurant?.collection_enabled !== false && <button type="button" role="radio" aria-checked={type === "collection"} className={type === "collection" ? "on" : ""} onClick={() => setType("collection")}>Collection</button>}
             </div>
-            {collectionClosed && <p className="notice">We're closed right now, so collection orders open again at 12pm.</p>}
+          </section>
+
+          <section className="panel">
+            <h2>{type === "delivery" ? "Choose a delivery time" : "When will you collect?"}</h2>
+            <div className="seg small day-pick" role="radiogroup" aria-label="Day">
+              {days.map((x) => (
+                <button type="button" key={x.key} role="radio" aria-checked={pickDay === x.key} className={pickDay === x.key ? "on" : ""} onClick={() => chooseDay(x.key)}>{x.label}</button>
+              ))}
+            </div>
+            {type === "delivery" && <p className="muted small">Each 15-minute slot takes a limited number of orders. Booked slots can't be picked.</p>}
+            {slots.error && <p className="error">{slots.error.message}</p>}
+            {type === "collection" && !closed && pickDay === days[0].key && (
+              <div className="slots" role="radiogroup" aria-label="Collection time">
+                <button type="button" role="radio" aria-checked={collectAt === "asap"} className={`slot asap ${collectAt === "asap" ? "on" : ""}`} onClick={() => setCollectAt("asap")}>
+                  <b>ASAP</b><span>about {restaurant?.default_prep_minutes || 20} min</span>
+                </button>
+              </div>
+            )}
+            {nothingLeft && (
+              <p className="notice">
+                No {type === "delivery" ? "delivery slots" : "collection times"} are left {dayLabel}.
+                {otherDay && <> <button type="button" className="linkish" onClick={() => chooseDay(otherDay.key)}>See {otherDay.label.toLowerCase()}</button></>}
+              </p>
+            )}
+            <div className="slots" role="radiogroup" aria-label={type === "delivery" ? "Delivery slots" : "Collection times"}>
+              {type === "delivery" && (slots.data || []).map((s) => {
+                const booked = s.status === "booked";
+                const on = slot?.start === s.start;
+                return (
+                  <button type="button" key={s.start} role="radio" aria-checked={on} disabled={booked}
+                    className={`slot ${s.status} ${on ? "on" : ""}`} onClick={() => setSlot(s)}>
+                    <b>{clock(s.start)}</b>
+                    <span>{booked ? "Booked" : s.status === "few_left" ? "1 left" : "Free"}</span>
+                  </button>
+                );
+              })}
+              {type === "collection" && (slots.data || []).map((t) => (
+                <button type="button" key={t.start} role="radio" aria-checked={collectAt === t.start}
+                  className={`slot free ${collectAt === t.start ? "on" : ""}`} onClick={() => setCollectAt(t.start)}>
+                  <b>{clock(t.start)}</b><span>Pick up</span>
+                </button>
+              ))}
+            </div>
           </section>
 
           {type === "delivery" && (
@@ -141,28 +208,6 @@ export default function Checkout() {
                     <input value={addrNotes} onChange={(e) => setAddrNotes(e.target.value)} placeholder="e.g. side door, ring twice" /></label>
                 </>
               )}
-            </section>
-          )}
-
-          {type === "delivery" && (
-            <section className="panel">
-              <h2>Choose a delivery time</h2>
-              <p className="muted small">Each 15-minute slot takes a limited number of orders. Booked slots can't be picked.</p>
-              {slots.error && <p className="error">{slots.error.message}</p>}
-              {slots.data && slots.data.length === 0 && <p className="notice">No delivery slots are left today. Collection may still be open.</p>}
-              <div className="slots" role="radiogroup" aria-label="Delivery slots">
-                {(slots.data || []).map((s) => {
-                  const booked = s.status === "booked";
-                  const on = slot?.start === s.start;
-                  return (
-                    <button type="button" key={s.start} role="radio" aria-checked={on} disabled={booked}
-                      className={`slot ${s.status} ${on ? "on" : ""}`} onClick={() => setSlot(s)}>
-                      <b>{clock(s.start)}</b>
-                      <span>{booked ? "Booked" : s.status === "few_left" ? "1 left" : "Free"}</span>
-                    </button>
-                  );
-                })}
-              </div>
             </section>
           )}
 
@@ -205,7 +250,7 @@ export default function Checkout() {
           {belowMin && <p className="notice">Minimum order for delivery is {money(d.min_order_pence)}.</p>}
           {error && <p className="error" role="alert">{error}</p>}
           <button className="btn primary wide big" disabled={!ready || busy}>{busy ? "Placing order…" : "Place order and pay"}</button>
-          {!ready && !busy && <p className="muted small center">{type === "delivery" && !slot ? "Check your postcode and pick a slot to continue." : "Fill in your details to continue."}</p>}
+          {!ready && !busy && <p className="muted small center">{type === "delivery" && !slot ? "Check your postcode and pick a slot to continue." : type === "collection" && !collectAt ? "Pick a collection time to continue." : "Fill in your details to continue."}</p>}
         </aside>
       </div>
     </form>

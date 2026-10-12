@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, kitchenSocket } from "../api.js";
 import { clock, dayAndTime, minutesFrom, TYPE_LABEL } from "../format.js";
-import { announce, chime, say, soundReady, unlockSound } from "../announcer.js";
+import { announce, chime, kitchenAwake, say, setOpeningHours, soundReady, unlockSound } from "../announcer.js";
 import { attempt, toast } from "../ui.jsx";
 
 const REPEAT_MS = 15000; // keep announcing every 15 seconds until the order is accepted
@@ -78,7 +78,7 @@ export default function Kitchen() {
   useEffect(() => {
     load();
     loadRequests();
-    api("/restaurant").then(setInfo).catch(() => {});
+    api("/restaurant").then((r) => { setOpeningHours(r.opening_hours); setInfo(r); }).catch(() => {});
     const poll = setInterval(() => { load(); loadRequests(); }, 15000);
     const clockTick = setInterval(() => setNow(Date.now()), 30000);
     const stop = kitchenSocket((ev) => {
@@ -114,7 +114,8 @@ export default function Kitchen() {
     setReady(true);
     setSoundOn(true);
     try { localStorage.setItem(SOUND_PREF, "on"); } catch { /* ignore */ }
-    if (pendingRef.current.length || requestsRef.current.length) announce(pendingRef.current, false, requestsRef.current);
+    if (!kitchenAwake()) { const w = chime(); setTimeout(() => say("Sound is on. We're closed now, so orders will be announced from half an hour before opening."), w); }
+    else if (pendingRef.current.length || requestsRef.current.length) announce(pendingRef.current, false, requestsRef.current);
     else { const w = chime(); setTimeout(() => say("Sound is on. New orders will be announced."), w); } // a quick test so staff hear it works
     toast("Sound is on: new orders will be announced");
   }
@@ -155,6 +156,7 @@ export default function Kitchen() {
         <span className="muted">{new Date(now).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}</span>
         <div className="spacer" />
         {error && <span className="error">Offline: {error}</span>}
+        {info && !kitchenAwake(new Date(now)) && <span className="quiet-badge" title="Orders placed now are for later. Voice announcements start 30 minutes before opening.">🌙 Closed · quiet hours</span>}
         <button className={`btn ${soundOn && ready ? "ghost" : "danger"}`} onClick={toggleSound} aria-pressed={soundOn}>
           {soundOn && ready ? "🔊 Sound on" : soundOn ? "🔇 Tap to turn on sound" : "🔇 Sound off"}
         </button>

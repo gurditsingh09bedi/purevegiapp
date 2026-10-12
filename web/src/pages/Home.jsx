@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { DishCard, ItemModal } from "../components.jsx";
+import { ClosedBanner, DishCard, ItemModal } from "../components.jsx";
 import { money } from "../format.js";
 import FoodFilm from "../FoodFilm.jsx";
 import { reveal } from "../fx.js";
@@ -105,6 +105,7 @@ export default function Home() {
       <FoodFilm />
       {restaurant?.online_orders_paused && <p className="notice paused-banner">We're very busy right now and have paused online orders for a few minutes. Please try again shortly.</p>}
 
+      <div className="closed-wrap"><ClosedBanner /></div>
       <section className="facts" aria-label="Opening and delivery">
         <div className="fact"><b>{open === null ? "Opening hours" : open ? "Open now" : "Closed now"}</b><span>{todayText}</span></div>
         {d?.enabled && <div className="fact"><b>Delivery {t12(d.hours[0].slice(0, 5))}–{t12(d.hours[1].slice(0, 5))}</b><span>Pick a 15-minute slot</span></div>}

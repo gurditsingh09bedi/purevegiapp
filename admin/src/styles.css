@@ -229,3 +229,4 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .booking-requests h2 { margin: 0 0 8px; font-size: 18px; }
 .booking-req { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
 .booking-req:first-of-type { border-top: 0; }
+.quiet-badge { background: #1d2b46; color: #dfe7ff; border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: .85rem; }

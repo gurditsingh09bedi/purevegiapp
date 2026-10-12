@@ -231,3 +231,23 @@ def test_evening_shows_no_morning_times_and_past_days_are_empty():
     assert times == [at(20, 30), at(21), at(21, 30)]
     assert booking.booking_times(DAY, s, now=at(21, 10)) == []  # too late for today
     assert booking.booking_times(DAY - timedelta(days=1), s, now=at(9)) == []  # yesterday
+
+
+def test_closed_at_2am_order_ahead_for_today_or_tomorrow():
+    """2am: we're closed, next opening is 12pm today; collection can be booked from 12:15pm (open + prep)."""
+    s = RestaurantSettings()
+    two_am = at(2)
+    assert slots.open_now(s, two_am) is False
+    assert slots.next_opening(s, two_am) == at(12)
+    assert slots.bookable_days(s, two_am) == [DAY, DAY + timedelta(days=1)]  # today and tomorrow
+    times = slots.collection_times(DAY, s, two_am)
+    assert times[0] == at(12, 15) and times[-1] == at(22, 15)
+    # 11pm: today is over, so the next opening (and the first collection time) is tomorrow
+    eleven = at(23)
+    assert slots.collection_times(DAY, s, eleven) == []
+    assert slots.next_opening(s, eleven) == at(12, d=DAY + timedelta(days=1))
+    assert slots.collection_times(DAY + timedelta(days=1), s, eleven)[0] == at(12, 15, d=DAY + timedelta(days=1))
+    # open: next_opening is now, and collection starts after the prep time
+    one_pm = at(13)
+    assert slots.open_now(s, one_pm) and slots.next_opening(s, one_pm) == one_pm
+    assert slots.collection_times(DAY, s, one_pm)[0] == at(13, 15)

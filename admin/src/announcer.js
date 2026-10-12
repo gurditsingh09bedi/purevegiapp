@@ -97,7 +97,8 @@ export function announcement(orders, repeat = false) {
   const tables = orders.filter((o) => o.type === "dine_in").map((o) => o.table_number || "unknown");
   const online = orders.filter((o) => o.type !== "dine_in");
   const parts = [];
-  if (online.length === 1) parts.push(`Pure Vegi received one online order, for ${online[0].type === "delivery" ? "delivery" : "collection"}.`);
+  const later = (o) => (o.slot_start && new Date(o.slot_start) - Date.now() > 60 * 60000 ? ` ${spokenWhen(o.slot_start)}` : "");
+  if (online.length === 1) parts.push(`Pure Vegi received one online order, for ${online[0].type === "delivery" ? "delivery" : "collection"}${later(online[0])}.`);
   else if (online.length > 1) {
     const d = online.filter((o) => o.type === "delivery").length;
     const c = online.length - d;
@@ -135,9 +136,28 @@ export function bookingAnnouncement(bookings, repeat = false, now = new Date()) 
   return `${n[0].toUpperCase()}${n.slice(1)} table booking requests are waiting.${repeat ? " Please accept or decline them." : ""}`;
 }
 
+// Quiet hours: no voice while the restaurant is closed (orders placed overnight for later
+// still show on screen, and are announced once the kitchen wakes up, 30 minutes before opening).
+let hours = null;
+export function setOpeningHours(openingHours) { hours = openingHours || null; }
+
+export function kitchenAwake(at = new Date(), openingHours = hours, marginMin = 30) {
+  if (!openingHours) return true; // not loaded yet: never stay silent by mistake
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London", weekday: "long", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(at);
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  const mins = (hm) => { const [h, m] = hm.slice(0, 5).split(":").map(Number); return h * 60 + m; };
+  const now = mins(`${get("hour")}:${get("minute")}`);
+  const h = openingHours[get("weekday").toLowerCase()];
+  if (!h || h.closed) return false;
+  return now >= mins(h.opens) - marginMin && now < mins(h.closes) + marginMin;
+}
+
 // Chime, then speak everything that is waiting (orders and booking requests).
 export function announce(orders, repeat = false, bookings = []) {
   if (!unlocked || (!orders.length && !bookings.length)) return;
+  if (!kitchenAwake()) return;
   const wait = chime();
   const text = [orders.length ? announcement(orders, repeat) : "", bookingAnnouncement(bookings, repeat)].filter(Boolean).join(" ");
   setTimeout(() => say(text), wait);

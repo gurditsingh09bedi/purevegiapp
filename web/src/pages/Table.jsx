@@ -2,12 +2,13 @@
 // rounds go straight to the kitchen, and the bill is paid at the end of the meal.
 import { useEffect, useState } from "react";
 import { api, myOrderTokens } from "../api.js";
-import { money } from "../format.js";
-import { Link, native, navigate, useApp } from "../state.jsx";
+import { money, whenOpen } from "../format.js";
+import { Link, native, navigate, openNow, useApp } from "../state.jsx";
 import { MenuSection } from "./Home.jsx";
 
 export function TableMenu({ token }) {
-  const { table, setTable, count, setCartOpen } = useApp();
+  const { table, setTable, count, setCartOpen, restaurant } = useApp();
+  const kitchenClosed = restaurant && (typeof restaurant.open_now === "boolean" ? !restaurant.open_now : openNow(restaurant) === false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -30,6 +31,11 @@ export function TableMenu({ token }) {
           <p className="muted">Order from your phone. Food comes to your table and you pay at the end.</p>
         </div>
       </section>
+      {kitchenClosed && (
+        <div className="closed-wrap"><div className="closed-banner" role="status"><span className="closed-moon" aria-hidden="true">🌙</span>
+          <div><b>The kitchen is closed right now{restaurant.next_open ? `. We open ${whenOpen(restaurant.next_open)}` : ""}.</b>
+            <p>Table orders start again when we open. Have a look at the menu in the meantime.</p></div></div></div>
+      )}
       <MenuSection heading="What would you like?" />
       <p className="center small"><button className="linklike" onClick={() => { setTable(null); navigate("/"); }}>Not at the restaurant? Order for delivery or collection</button></p>
       {count > 0 && <button className="float-cart" onClick={() => setCartOpen(true)}>View order · {count} item{count > 1 ? "s" : ""}</button>}

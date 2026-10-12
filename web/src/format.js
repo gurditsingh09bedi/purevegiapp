@@ -44,3 +44,24 @@ export const ALLERGENS = [
   "celery", "cereals containing gluten", "crustaceans", "eggs", "fish", "lupin", "milk",
   "molluscs", "mustard", "tree nuts", "peanuts", "sesame", "soya", "sulphites",
 ];
+
+// "2026-10-03" for a moment, in UK time.
+export const ukDay = (at = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(at));
+
+// "today at 12pm", "tomorrow at 12pm", "on Monday at 12pm" (UK time)
+export function whenOpen(iso, now = new Date()) {
+  if (!iso) return "";
+  const d = ukDay(iso);
+  const t = clock(iso).replace(":00", "");
+  if (d === ukDay(now)) return `today at ${t}`;
+  if (d === ukDay(now.getTime() + 86400000)) return `tomorrow at ${t}`;
+  return `on ${new Date(iso).toLocaleDateString("en-GB", { weekday: "long", timeZone: TZ })} at ${t}`;
+}
+
+// Today and tomorrow, for ordering ahead.
+export function orderDays(now = new Date()) {
+  const t = ukDay(now);
+  // noon UTC of today's UK date + 1 day is safely tomorrow's UK date
+  const tm = ukDay(new Date(`${t}T12:00:00Z`).getTime() + 86400000);
+  return [{ key: t, label: "Today" }, { key: tm, label: "Tomorrow" }];
+}

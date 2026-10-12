@@ -1,8 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { busy, enableWebPush, webPushState } from "./api.js";
 import { buzz, flyToCart, tiltProps } from "./fx.js";
-import { money } from "./format.js";
+import { money, whenOpen } from "./format.js";
 import { Link, navigate, openNow, useApp } from "./state.jsx";
+
+// Shown while we're closed: you can still order, for later.
+export function ClosedBanner({ compact = false }) {
+  const { restaurant, table } = useApp();
+  if (!restaurant || table) return null;
+  const closed = typeof restaurant.open_now === "boolean" ? !restaurant.open_now : openNow(restaurant) === false;
+  if (!closed) return null;
+  return (
+    <div className={`closed-banner ${compact ? "compact" : ""}`} role="status">
+      <span className="closed-moon" aria-hidden="true">🌙</span>
+      <div>
+        <b>We're closed right now{restaurant.next_open ? `. We open ${whenOpen(restaurant.next_open)}` : ""}.</b>
+        <p>{compact ? "You can still order for later: pick a time at checkout." : "Order now for later: choose a delivery slot or collection time at checkout, and it'll be fresh and ready on time."}</p>
+      </div>
+    </div>
+  );
+}
 
 export function Header() {
   const { count, setCartOpen, user, table, restaurant } = useApp();
@@ -177,6 +194,7 @@ export function CartDrawer() {
           <h2>Your basket</h2>
           <button className="modal-x static" onClick={() => setCartOpen(false)} aria-label="Close basket">×</button>
         </div>
+        <ClosedBanner compact />
         {cart.length === 0 ? (
           <p className="muted">Your basket is empty. Add something tasty from the menu.</p>
         ) : (

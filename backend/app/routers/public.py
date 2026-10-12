@@ -22,8 +22,11 @@ router = APIRouter(tags=["public"])
 
 
 @router.get("/restaurant")
-def restaurant(s: RestaurantSettings = Depends(settings)):
+def restaurant(s: RestaurantSettings = Depends(settings), at=Depends(now)):
+    nxt = slots.next_opening(s, at)
     return {
+        "open_now": slots.open_now(s, at),
+        "next_open": nxt.isoformat() if nxt else None,  # when closed: the next opening time
         "name": s.name,
         "address": s.address,
         "phone": s.phone,
@@ -37,6 +40,7 @@ def restaurant(s: RestaurantSettings = Depends(settings)):
         },
         "online_orders_paused": s.online_orders_paused,
         "prep_minute_choices": s.prep_minute_choices,
+        "default_prep_minutes": s.default_prep_minutes,
         "ticket_minutes": {"amber": s.ticket_amber_minutes, "red": s.ticket_red_minutes},
         "bookings_enabled": s.bookings_enabled,
         "booking_deposit_pence": s.booking_deposit_pence,
@@ -46,6 +50,17 @@ def restaurant(s: RestaurantSettings = Depends(settings)):
         "google_review_url": str(s.google_review_url) if s.google_review_url else None,
         "timezone": s.timezone,
     }
+
+
+@router.get("/collection/times")
+def collection_times(day: Date | None = Query(None, description="YYYY-MM-DD in UK time; defaults to today"),
+                     s: RestaurantSettings = Depends(settings), at=Depends(now)):
+    """Pick-up times for collection orders (today or tomorrow), so people can order ahead while we're closed."""
+    day = day or at.astimezone(ZoneInfo(s.timezone)).date()
+    if day not in slots.bookable_days(s, at):
+        raise HTTPException(400, "collection can't be booked for that day")
+    return [{"start": t.isoformat(), "label": t.strftime("%-I:%M%p").lower().replace(":00", "")}
+            for t in slots.collection_times(day, s, at)]
 
 
 @router.get("/tables/qr/{token}")

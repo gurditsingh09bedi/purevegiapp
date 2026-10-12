@@ -167,8 +167,10 @@ def create_order(
     if data.type is not OrderType.DINE_IN:
         if settings.online_orders_paused:
             raise OrderError("we're not taking online orders right now", 409)
-        if data.type is OrderType.COLLECTION and (not settings.collection_enabled or not _open_now(settings, now)):
-            raise OrderError("collection is closed right now", 409)
+        if data.type is OrderType.COLLECTION and not settings.collection_enabled:
+            raise OrderError("collection isn't available right now", 409)
+        if data.type is OrderType.COLLECTION and data.collect_at is None and not _open_now(settings, now):
+            raise OrderError("we're closed right now: please choose a collection time", 409)
     elif not _open_now(settings, now):
         raise OrderError("the kitchen is closed", 409)
 
@@ -212,6 +214,15 @@ def create_order(
             raise OrderError(str(e), 409) from None
         order.slot_start, order.slot_end = slot.start.astimezone(UTC), slot.end.astimezone(UTC)
         order.hold_expires_at = now + timedelta(minutes=settings.slot_hold_minutes)
+
+    if data.type is OrderType.COLLECTION and data.collect_at is not None:
+        at = data.collect_at if data.collect_at.tzinfo else data.collect_at.replace(tzinfo=ZoneInfo(settings.timezone))
+        local_day = at.astimezone(ZoneInfo(settings.timezone)).date()
+        allowed = slots.collection_times(local_day, settings, now) if local_day in slots.bookable_days(settings, now) else []
+        if not any(abs((t - at).total_seconds()) < 1 for t in allowed):
+            raise OrderError("please pick one of the collection times shown", 409)
+        # stored like a slot, so the kitchen treats it as a pre-order and starts cooking in time
+        order.slot_start, order.slot_end = at.astimezone(UTC), (at + timedelta(minutes=15)).astimezone(UTC)
 
     if data.type is OrderType.DINE_IN:
         order.table_session = _table_session(db, data.table_token, cfg)
