@@ -357,6 +357,23 @@ def test_closed_at_night_order_ahead_only(client):
     assert c.get("/delivery/slots", params={"day": "2026-10-03"}).status_code == 200  # tomorrow can be booked
 
 
+def test_late_night_order_for_tomorrow_shows_in_kitchen(client):
+    """11pm: a delivery for tomorrow 5:15pm must appear on the kitchen screen straight away."""
+    from app import deps
+    from app.main import app
+
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    app.dependency_overrides[deps.now] = lambda: datetime(2026, 10, 2, 22, 0, tzinfo=UTC)  # 11pm London
+    slot = next(s for s in c.get("/delivery/slots", params={"day": "2026-10-03"}).json() if s["status"] != "booked")
+    order = c.post("/orders", json={"type": "delivery", "customer_name": "Night", "customer_phone": "07700900222",
+                                    "items": [{"menu_item_id": plain_item(c), "quantity": 1}], "slot_start": slot["start"],
+                                    "address": {"line1": "x", "postcode": "B21", "lat": 52.51, "lng": -1.93}}).json()
+    assert c.post(f"/orders/{order['id']}/test-pay", headers={"X-Order-Token": order["view_token"]}).json()["status"] == "placed"
+    queue = c.get("/kitchen/queue", headers=owner).json()
+    assert any(t["order"]["id"] == order["id"] for t in queue)
+
+
 def test_busy_meter_special_and_reviews(client):
     from app import deps
     from app.main import app

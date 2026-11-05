@@ -13,6 +13,13 @@ const COLUMNS = [
   { key: "cook", title: "Cooking", statuses: ["preparing"] },
   { key: "ready", title: "Ready", statuses: ["ready"] },
 ];
+// "Tomorrow · " for tickets due on a later day (UK time), so night pre-orders aren't mistaken for tonight.
+const ukDay = (x) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date(x));
+function dayWord(iso) {
+  if (!iso || ukDay(iso) === ukDay(Date.now())) return "";
+  if (ukDay(iso) === ukDay(Date.now() + 86400000)) return "TOMORROW · ";
+  return `${new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" })} · `;
+}
 const URGENCY_WORD = { waiting: "Pre-order", ok: "On time", amber: "Getting late", red: "Late" };
 
 export default function Kitchen() {
@@ -237,7 +244,7 @@ function Ticket({ t, now, choices, act }) {
   const [reason, setReason] = useState("");
   const id = o.id;
   const where =
-    o.type === "delivery" ? `Slot ${clock(o.slot_start)}–${clock(o.slot_end)}`
+    o.type === "delivery" ? `${dayWord(o.slot_start)}Slot ${clock(o.slot_start)}–${clock(o.slot_end)}`
     : o.type === "dine_in" ? `Table ${o.table_number || "?"}`
     : o.customer_name || "Collection";
   const waited = minutesFrom(o.created_at, now);
@@ -251,7 +258,7 @@ function Ticket({ t, now, choices, act }) {
       </header>
       <p className="where">{where}</p>
       <p className="times muted">
-        {t.pre_order ? `Start cooking ${clock(t.cook_at)} · ` : ""}Ready by {clock(t.ready_at)} · ordered {waited} min ago
+        {t.pre_order ? `${dayWord(t.cook_at)}Start cooking ${clock(t.cook_at)} · ` : ""}Ready by {clock(t.ready_at)} · ordered {waited} min ago
       </p>
       <ul className="items">
         {o.items.map((it, i) => (

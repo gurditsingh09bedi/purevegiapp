@@ -383,8 +383,9 @@ def _broadcast(outbox: Outbox, order: Order, settings: RestaurantSettings) -> No
         outbox.add("drivers", payload)
 
 
-def kitchen_orders(db: Session, now: datetime, horizon_hours: int = 18) -> list[Order]:
-    """Everything the kitchen should see: live orders, including today's pre-orders."""
+def kitchen_orders(db: Session, now: datetime, horizon_hours: int = 48) -> list[Order]:
+    """Everything the kitchen should see: live orders and pre-orders, including tomorrow's
+    (customers can order tomorrow's slots late at night, so those must show up too)."""
     return list(
         db.scalars(
             select(Order).where(
