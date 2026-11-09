@@ -33,6 +33,24 @@ def create_intent(order: Order, cfg: AppConfig) -> dict:
     return {"client_secret": intent.client_secret, "dev_mode": False, "amount_pence": order.total_pence}
 
 
+def create_table_intent(session, amount_pence: int, cfg: AppConfig) -> dict:
+    """A payment for a whole table bill (dine-in, paid from the phone)."""
+    if not cfg.stripe_secret_key:
+        if cfg.dev_payments:
+            return {"client_secret": None, "dev_mode": True, "amount_pence": amount_pence}
+        raise PaymentsNotConfigured("Stripe is not set up")
+    intent = stripe.PaymentIntent.create(
+        amount=amount_pence,
+        currency="gbp",
+        automatic_payment_methods={"enabled": True},
+        metadata={"table_session_id": str(session.id)},
+        api_key=cfg.stripe_secret_key,
+        idempotency_key=f"table-{session.id}-{amount_pence}",
+    )
+    session.stripe_payment_intent_id = intent.id
+    return {"client_secret": intent.client_secret, "dev_mode": False, "amount_pence": amount_pence}
+
+
 def parse_webhook(payload: bytes, signature: str, cfg: AppConfig):
     if not cfg.stripe_webhook_secret:
         raise PaymentsNotConfigured("webhook secret missing")

@@ -238,3 +238,44 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .review-row { border: 1px solid var(--line, #e5e0d2); border-radius: 12px; padding: 12px; }
 .nowrap { white-space: nowrap; }
 .card h3 { margin: 18px 0 8px; }
+.badge.t-till { background: #fff1de; color: #7a4a0c; }
+.delivery-time { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; margin: 0 0 12px; }
+.delivery-time .dt-now { font-size: 1.05rem; margin-right: 6px; }
+.delivery-time .dt-extra { color: #b04a12; font-weight: 700; }
+.delivery-time .muted.small { flex-basis: 100%; font-size: .82rem; }
+.takings { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.card.stat { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; }
+.card.stat b { font-size: 1.5rem; color: var(--green, #023e32); }
+
+/* Till */
+.till { display: grid; grid-template-columns: 1fr 380px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .till { grid-template-columns: 1fr; } }
+.till-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.till-cats button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.till-cats button.on { background: var(--green, #023e32); color: #fff; border-color: transparent; }
+.till-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.till-item { min-height: 84px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: #fff; font: inherit; cursor: pointer; }
+.till-item:active { transform: scale(.98); }
+.till-item span { color: var(--muted, #6b6b60); font-weight: 700; }
+.till-item.sold { opacity: .45; cursor: not-allowed; }
+.till-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 12px; }
+.till-basket { display: flex; flex-direction: column; gap: 10px; }
+.till-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow: auto; }
+.till-lines li { display: grid; grid-template-columns: 1fr auto 70px; gap: 8px; align-items: center; }
+.till-lines .qty { display: inline-flex; align-items: center; gap: 6px; }
+.till-lines .qty button { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: #fff; font-size: 18px; cursor: pointer; }
+.till-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 1.2rem; border-top: 1px solid var(--line); padding-top: 10px; }
+.till-total b { font-size: 1.6rem; }
+.till-pay { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.till-pay .btn { padding: 16px; font-size: 1.1rem; }
+.till-table { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.till-table.asked { background: #fff6e8; margin: 0 -12px; padding: 10px 12px; border-radius: 10px; }
+.asked-tag { color: #9a4b07; font-weight: 700; font-size: .85rem; }
+.till-group { border: 0; padding: 0; margin: 0 0 12px; }
+.till-group legend { font-weight: 800; margin-bottom: 6px; }
+.till-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 12px; font: inherit; cursor: pointer; }
+.chip.on { background: var(--green, #023e32); color: #fff; border-color: transparent; }
+.till-amount { font-size: 2.4rem; font-weight: 800; margin: 4px 0 10px; }
+.till-change { font-size: 1.4rem; font-weight: 800; color: #1f7a45; }
+.till-change.short { color: #b3261e; }

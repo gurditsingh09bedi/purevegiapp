@@ -53,8 +53,15 @@ class RestaurantSettings(BaseModel):
     longitude: float = -1.9310
     opening_hours: dict[str, DayHours] = Field(default_factory=_default_week)
 
-    # --- Delivery slots -----------------------------------------------------
+    # --- Delivery -----------------------------------------------------------
+    # Delivery runs on these days between delivery_start and delivery_end (agreed: Fri-Sun, 5pm-10pm).
+    # Orders are "as soon as possible": the customer is told about delivery_minutes (45), plus
+    # busy_extra_minutes when the kitchen turns up the time on a busy night.
     delivery_enabled: bool = True
+    delivery_days: list[str] = Field(default_factory=lambda: ["friday", "saturday", "sunday"])
+    delivery_minutes: int = Field(45, ge=10, le=180)
+    busy_extra_minutes: int = Field(0, ge=0, le=180)
+    delay_choices: list[int] = Field(default_factory=lambda: [5, 10, 15, 20, 30])
     delivery_start: time = time(17, 0)  # agreed 5 pm
     delivery_end: time = time(22, 0)  # agreed 10 pm (last slot ends here)
     slot_minutes: int = Field(15, ge=5, le=120)
@@ -91,7 +98,7 @@ class RestaurantSettings(BaseModel):
     special_day: date | None = None
 
     # --- Dine-in booking ------------------------------------------------------
-    bookings_enabled: bool = True
+    bookings_enabled: bool = False  # agreed Nov 2026: no table booking for now
     booking_auto_confirm: bool = False  # agreed: staff accept or decline each request
     booking_deposit_pence: int = Field(0, ge=0)  # owner to set
     booking_deposit_per_guest: bool = False
@@ -108,8 +115,14 @@ class RestaurantSettings(BaseModel):
     google_rating: float | None = Field(None, ge=1, le=5)  # e.g. 4.8, as shown on Google
     google_review_count: int | None = Field(None, ge=0)
 
+    # One-off data changes already applied to this database (see app/upgrades.py).
+    applied_upgrades: list[str] = Field(default_factory=list)
+
     @model_validator(mode="after")
     def _check(self) -> RestaurantSettings:
+        unknown = set(self.delivery_days) - set(WEEKDAYS)
+        if unknown:
+            raise ValueError(f"not a weekday: {', '.join(sorted(unknown))}")
         if self.delivery_start >= self.delivery_end:
             raise ValueError("delivery start must be before delivery end")
         if self.ticket_amber_minutes >= self.ticket_red_minutes:

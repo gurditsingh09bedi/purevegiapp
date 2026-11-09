@@ -1,7 +1,9 @@
 // Dine-in: the QR code on each table opens /t/<token>. Guests order from their phone,
 // rounds go straight to the kitchen, and the bill is paid at the end of the meal.
-import { useEffect, useState } from "react";
-import { api, myOrderTokens } from "../api.js";
+import { useEffect, useRef, useState } from "react";
+import { api, myOrderTokens, STRIPE_PK } from "../api.js";
+import { confetti } from "../fx.js";
+import { loadStripe } from "./Checkout.jsx";
 import { money, whenOpen } from "../format.js";
 import { Link, native, navigate, openNow, useApp } from "../state.jsx";
 import { MenuSection } from "./Home.jsx";
@@ -36,6 +38,7 @@ export function TableMenu({ token }) {
           <div><b>The kitchen is closed right now{restaurant.next_open ? `. We open ${whenOpen(restaurant.next_open)}` : ""}.</b>
             <p>Table orders start again when we open. Have a look at the menu in the meantime.</p></div></div></div>
       )}
+      <TableBill token={token} number={table.number} />
       <MenuSection heading="What would you like?" />
       <p className="center small"><button className="linklike" onClick={() => { setTable(null); navigate("/"); }}>Not at the restaurant? Order for delivery or collection</button></p>
       {count > 0 && <button className="float-cart" onClick={() => setCartOpen(true)}>View order · {count} item{count > 1 ? "s" : ""}</button>}
@@ -88,8 +91,101 @@ export function TableCheckout() {
         <label className="field"><span className="field-label">Note for the kitchen (optional)</span><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Allergies, spice level…" /></label>
         {error && <p className="error" role="alert">{error}</p>}
         <button className="btn primary wide big" onClick={send} disabled={busy}>{busy ? "Sending…" : "Send to kitchen"}</button>
-        <p className="muted small center">No payment now. Pay at the end of your meal.</p>
+        <p className="muted small center">No payment now. At the end, pay from your phone or at the till.</p>
       </section>
     </div>
+  );
+}
+
+// The bill at the end of the meal: pay from the phone, or tell staff you'll pay at the till.
+function TableBill({ token, number }) {
+  const [bill, setBill] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState({}); // {paying, done, till, error, stripe}
+  const mount = useRef(null);
+  const stripeRef = useRef(null);
+  const t = encodeURIComponent(token);
+
+  const load = () => api(`/tables/qr/${t}/bill`, { quiet: true }).then(setBill).catch(() => setBill(null));
+  useEffect(() => { load(); const i = setInterval(load, 20000); return () => clearInterval(i); }, [t]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (state.done) {
+    return (
+      <section className="panel table-bill done" role="status">
+        <h2>Thank you! Your bill is paid.</h2>
+        <p className="muted">Enjoy the rest of your evening at Pure Vegi.</p>
+      </section>
+    );
+  }
+  if (!bill || !bill.orders?.length) return null;
+
+  async function payOnline() {
+    setState({ paying: true });
+    try {
+      const p = await api(`/tables/qr/${t}/pay`, { method: "POST" });
+      if (p.dev_mode) {
+        await api(`/tables/qr/${t}/test-pay`, { method: "POST" });
+        confetti();
+        setState({ done: true });
+        return;
+      }
+      if (!STRIPE_PK) throw new Error("Card payments aren't set up yet. Please pay at the till.");
+      const Stripe = await loadStripe();
+      const stripe = Stripe(STRIPE_PK);
+      const elements = stripe.elements({ clientSecret: p.client_secret, appearance: { theme: "stripe", variables: { colorPrimary: "#023E32" } } });
+      stripeRef.current = { stripe, elements };
+      setState({ stripe: true });
+      setTimeout(() => elements.create("payment").mount(mount.current), 0);
+    } catch (e) {
+      setState({ error: e.message });
+    }
+  }
+
+  async function confirmCard() {
+    setState((x) => ({ ...x, paying: true }));
+    const { stripe, elements } = stripeRef.current;
+    const { error } = await stripe.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}/t/${t}` }, redirect: "if_required" });
+    if (error) setState((x) => ({ ...x, paying: false, error: error.message }));
+    else { confetti(); setState({ done: true }); }
+  }
+
+  async function payAtTill() {
+    try {
+      setBill(await api(`/tables/qr/${t}/pay-at-till`, { method: "POST" }));
+      setState({ till: true });
+    } catch (e) {
+      setState({ error: e.message });
+    }
+  }
+
+  return (
+    <section className="panel table-bill">
+      <button className="bill-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span><b>Your bill</b> · table {number}</span>
+        <span className="bill-total">{money(bill.due_pence)} <span aria-hidden="true">{open ? "▴" : "▾"}</span></span>
+      </button>
+      {open && (
+        <ul className="sum-lines">
+          {bill.orders.flatMap((o) => o.items.map((it, i) => (
+            <li key={`${o.id}-${i}`}><span>{it.quantity}× {it.name}{it.options.length ? <small className="muted"> ({it.options.map((x) => x.name).join(", ")})</small> : null}</span><span>{money(it.unit_price_pence * it.quantity)}</span></li>
+          )))}
+          {bill.deposit_pence > 0 && <li><span>Deposit paid</span><span>−{money(bill.deposit_pence)}</span></li>}
+        </ul>
+      )}
+      {bill.pay_at_till || state.till ? (
+        <p className="notice">Please pay at the till, by card or cash. Our staff know table {number} is ready to pay.</p>
+      ) : state.stripe ? (
+        <>
+          <div ref={mount} className="stripe-mount" />
+          <button className="btn primary wide big" onClick={confirmCard} disabled={state.paying}>{state.paying ? "Paying…" : `Pay ${money(bill.due_pence)}`}</button>
+        </>
+      ) : (
+        <div className="bill-actions">
+          <button className="btn primary big" onClick={payOnline} disabled={state.paying}>{state.paying ? "One moment…" : "Pay online now"}</button>
+          <button className="btn ghost big" onClick={payAtTill}>Pay at the till</button>
+        </div>
+      )}
+      {state.error && <p className="error" role="alert">{state.error}</p>}
+    </section>
   );
 }

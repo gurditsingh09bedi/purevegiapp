@@ -261,3 +261,23 @@ def test_busy_meter_levels_and_wait():
     assert kitchen.kitchen_load(500, 15, 4, 8, 3).wait_minutes == 120  # capped
     with pytest.raises(ValidationError):
         RestaurantSettings(busy_orders=8, very_busy_orders=8)
+
+
+def test_delivery_friday_to_sunday_5_to_10():
+    s = RestaurantSettings()
+    assert s.delivery_days == ["friday", "saturday", "sunday"] and s.delivery_minutes == 45
+    assert s.bookings_enabled is False
+    assert not slots.delivery_open(s, at(13))          # Friday 1pm
+    assert slots.delivery_open(s, at(17))              # Friday 5pm
+    assert not slots.delivery_open(s, at(22))          # 10pm: closed
+    monday = date(2026, 10, 5)
+    assert not slots.delivery_open(s, at(18, d=monday))
+    assert slots.next_delivery_open(s, at(18, d=monday)) == at(17, d=date(2026, 10, 9))  # next Friday
+    assert slots.next_delivery_open(s, at(23)) == at(17, d=date(2026, 10, 3))            # Saturday
+    with pytest.raises(ValidationError):
+        RestaurantSettings(delivery_days=["funday"])
+
+
+def test_delivery_accepted_message_says_arrive():
+    msg = order_flow.customer_message(Status.ACCEPTED, OrderType.DELIVERY, ready_at=at(18, 45))
+    assert "arrive around 6:45 pm" in msg.body

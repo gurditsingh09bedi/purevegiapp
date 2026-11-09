@@ -19,6 +19,22 @@ def meal_upgrade():
     ]
 
 
+# "Choose up to 2 sauces" (free) on burgers, wraps, street food and fries.
+SAUCES = ["Hot chilli", "Sweet chilli", "Plain mayo", "Garlic mayo", "Mint", "BBQ", "Ketchup"]
+SAUCE_GROUP = "Sauces (choose up to 2)"
+SAUCE_CATEGORIES = ("Burgers", "Wraps", "Street Food")
+SAUCE_SIDES = ("Fries", "Masala Fries", "Curly Fries", "Loaded Fries", "Chilli Fries", "Wedges")
+NO_SAUCE = ("Naan",)
+
+
+def sauces():
+    return {"name": SAUCE_GROUP, "min": 0, "max": 2, "options": [(n, 0) for n in SAUCES]}
+
+
+def wants_sauce(category: str, dish: str) -> bool:
+    return dish not in NO_SAUCE and (category in SAUCE_CATEGORIES or (category == "Sides" and dish in SAUCE_SIDES))
+
+
 TOPPINGS = ["Mushrooms", "Sweetcorn", "Red onion", "Mixed peppers", "Olives", "Pineapple", "Jalapeños",
             "Coriander", "Green chillies", "Extra cheese", "V-pepperoni", "V-chicken", "Paneer"]
 SIZES = [('7" (4 slices)', "7"), ('10" (6 slices)', "10"), ('14" (10 slices)', "14")]
@@ -189,3 +205,13 @@ MENU = [
         {"name": "Fresh Orange Juice", "price": 299, "vegan": True},
     ]),
 ]
+
+
+# Sauces are added to the dishes that take them (kept separate so the lists above stay readable).
+for _cat, _dishes in MENU:
+    for _d in _dishes:
+        if wants_sauce(_cat, _d["name"]):
+            _groups = list(_d.get("groups", []))
+            # after the dish's own choices (bread, size), before the meal upgrade
+            at = next((i for i, g in enumerate(_groups) if g["name"] == "Make it a meal"), len(_groups))
+            _d["groups"] = [*_groups[:at], sauces(), *_groups[at:]]

@@ -257,5 +257,16 @@ def sales_report(start: datetime, end: datetime, db: Session = Depends(get_db)):
     return [{"type": t.value, "orders": n, "total_pence": total or 0, "tips_pence": tips or 0} for t, n, total, tips in rows]
 
 
+@router.get("/reports/payments")
+def payments_report(start: datetime, end: datetime, db: Session = Depends(get_db)):
+    """Paid sales between two times by how they were paid: card / cash at the till, or online (pence)."""
+    rows = db.execute(
+        select(Order.payment_method, func.count(Order.id), func.sum(Order.total_pence))
+        .where(Order.paid_at >= start, Order.paid_at < end, Order.status.not_in([Status.REJECTED, Status.CANCELLED]))
+        .group_by(Order.payment_method)
+    ).all()
+    return [{"method": m or "online", "orders": n, "total_pence": total or 0} for m, n, total in rows]
+
+
 def _404(what: str):
     raise HTTPException(404, f"{what} not found")

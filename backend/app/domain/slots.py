@@ -173,3 +173,33 @@ def check_slot(
                 raise SlotUnavailable(f"the {slot.label} slot is fully booked")
             return slot
     raise SlotUnavailable("that delivery time is not available")
+
+
+# --- Delivery hours (as soon as possible orders) -------------------------------------
+
+
+def delivery_open(settings: RestaurantSettings, now: datetime) -> bool:
+    """True while we deliver: one of the delivery days, between delivery_start and delivery_end."""
+    if not settings.delivery_enabled:
+        return False
+    local = now.astimezone(ZoneInfo(settings.timezone))
+    return (WEEKDAYS[local.weekday()] in settings.delivery_days
+            and settings.delivery_start <= local.time() < settings.delivery_end)
+
+
+def next_delivery_open(settings: RestaurantSettings, now: datetime) -> datetime | None:
+    """When delivery next opens (``now`` while open). None if delivery is off or has no days."""
+    if delivery_open(settings, now):
+        return now
+    if not settings.delivery_enabled or not settings.delivery_days:
+        return None
+    tz = ZoneInfo(settings.timezone)
+    local = now.astimezone(tz)
+    for i in range(8):
+        day = local.date() + timedelta(days=i)
+        if WEEKDAYS[day.weekday()] not in settings.delivery_days:
+            continue
+        start = datetime.combine(day, settings.delivery_start, tz)
+        if start > local:
+            return start
+    return None

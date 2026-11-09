@@ -95,7 +95,8 @@ const list = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", "
 // What to say for the orders still waiting to be accepted.
 export function announcement(orders, repeat = false) {
   const tables = orders.filter((o) => o.type === "dine_in").map((o) => o.table_number || "unknown");
-  const online = orders.filter((o) => o.type !== "dine_in");
+  const till = orders.filter((o) => o.channel === "till");
+  const online = orders.filter((o) => o.type !== "dine_in" && o.channel !== "till");
   const parts = [];
   const later = (o) => (o.slot_start && new Date(o.slot_start) - Date.now() > 60 * 60000 ? ` ${spokenWhen(o.slot_start)}` : "");
   if (online.length === 1) parts.push(`Pure Vegi received one online order, for ${online[0].type === "delivery" ? "delivery" : "collection"}${later(online[0])}.`);
@@ -105,6 +106,8 @@ export function announcement(orders, repeat = false) {
     const kinds = [d && `${words(d)} for delivery`, c && `${words(c)} for collection`].filter(Boolean);
     parts.push(`Pure Vegi received ${words(online.length)} online orders: ${list(kinds)}.`);
   }
+  if (till.length === 1) parts.push(`Till order, ${till[0].service === "eat_in" ? "eat in" : "takeaway"}.`);
+  else if (till.length > 1) parts.push(`${words(till.length)} till orders.`);
   if (tables.length === 1) parts.push(`Order received from table number ${tables[0]}.`);
   else if (tables.length > 1) parts.push(`Orders received from table numbers ${list([...new Set(tables)])}.`);
   if (repeat) parts.push(orders.length === 1 ? "Please accept the order." : "Please accept the orders.");

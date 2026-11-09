@@ -167,10 +167,12 @@ def create_order(
     if data.type is not OrderType.DINE_IN:
         if settings.online_orders_paused:
             raise OrderError("we're not taking online orders right now", 409)
+        if data.type is OrderType.DELIVERY and not slots.delivery_open(settings, now):
+            raise OrderError(f"we're not delivering right now. {delivery_hours_text(settings, now)}", 409)
         if data.type is OrderType.COLLECTION and not settings.collection_enabled:
             raise OrderError("collection isn't available right now", 409)
-        if data.type is OrderType.COLLECTION and data.collect_at is None and not _open_now(settings, now):
-            raise OrderError("we're closed right now: please choose a collection time", 409)
+        if data.type is OrderType.COLLECTION and not _open_now(settings, now):
+            raise OrderError("we're closed right now, so collection orders can't be taken", 409)
     elif not _open_now(settings, now):
         raise OrderError("the kitchen is closed", 409)
 
@@ -203,26 +205,12 @@ def create_order(
         order.address = data.address.model_dump()
         order.distance_miles = q.distance_miles
         order.delivery_fee_pence = q.fee_pence
+        # As soon as possible: no slots. The customer is told "about 45 minutes" (more on a busy night).
+        order.promised_minutes = quoted_delivery_minutes(settings)
+        order.channel = "online"
 
-        _lock_slot_booking(db)
-        start = data.slot_start if data.slot_start.tzinfo else data.slot_start.replace(tzinfo=ZoneInfo(settings.timezone))
-        local_day = start.astimezone(ZoneInfo(settings.timezone)).date()
-        taken = occupied_slot_starts(db, *day_bounds(local_day, settings), now)
-        try:
-            slot = slots.check_slot(start, settings, taken, now)
-        except slots.SlotUnavailable as e:
-            raise OrderError(str(e), 409) from None
-        order.slot_start, order.slot_end = slot.start.astimezone(UTC), slot.end.astimezone(UTC)
-        order.hold_expires_at = now + timedelta(minutes=settings.slot_hold_minutes)
-
-    if data.type is OrderType.COLLECTION and data.collect_at is not None:
-        at = data.collect_at if data.collect_at.tzinfo else data.collect_at.replace(tzinfo=ZoneInfo(settings.timezone))
-        local_day = at.astimezone(ZoneInfo(settings.timezone)).date()
-        allowed = slots.collection_times(local_day, settings, now) if local_day in slots.bookable_days(settings, now) else []
-        if not any(abs((t - at).total_seconds()) < 1 for t in allowed):
-            raise OrderError("please pick one of the collection times shown", 409)
-        # stored like a slot, so the kitchen treats it as a pre-order and starts cooking in time
-        order.slot_start, order.slot_end = at.astimezone(UTC), (at + timedelta(minutes=15)).astimezone(UTC)
+    if data.type is OrderType.COLLECTION:
+        order.channel = "online"
 
     if data.type is OrderType.DINE_IN:
         order.table_session = _table_session(db, data.table_token, cfg)
@@ -243,6 +231,93 @@ def create_order(
     return order
 
 
+# --- Delivery times ------------------------------------------------------------------
+
+
+def quoted_delivery_minutes(settings: RestaurantSettings) -> int:
+    """What a new delivery customer is told: the usual time plus any busy-night extra."""
+    return settings.delivery_minutes + settings.busy_extra_minutes
+
+
+def delivery_hours_text(settings: RestaurantSettings, now: datetime) -> str:
+    days = [d for d in WEEKDAYS if d in settings.delivery_days]
+    span = f"{days[0][:3].title()}-{days[-1][:3].title()}" if days == list(WEEKDAYS[WEEKDAYS.index(days[0]):][:len(days)]) \
+        else ", ".join(d[:3].title() for d in days)
+    hours = f"{_clock_text(settings.delivery_start)}-{_clock_text(settings.delivery_end)}"
+    nxt = slots.next_delivery_open(settings, now)
+    when = ""
+    if nxt is not None:
+        local = nxt.astimezone(ZoneInfo(settings.timezone))
+        when = f" Next delivery: {local.strftime('%A')} at {_clock_text(local.time())}."
+    return f"We deliver {span}, {hours}.{when}" if days else "Delivery is switched off."
+
+
+def _clock_text(t) -> str:
+    h = t.hour % 12 or 12
+    return f"{h}{':' + format(t.minute, '02d') if t.minute else ''}{'am' if t.hour < 12 else 'pm'}"
+
+
+def arrive_by(order: Order, settings: RestaurantSettings) -> datetime | None:
+    """Delivery: when the customer should expect it (time of payment + promised minutes + delays)."""
+    if order.type is not OrderType.DELIVERY or not order.promised_minutes or order.slot_start is not None:
+        return None
+    base = aware(order.paid_at) or aware(order.created_at)
+    if base is None:
+        return None
+    return base + timedelta(minutes=order.promised_minutes + (order.extra_minutes or 0))
+
+
+def set_busy_time(db: Session, outbox: Outbox, settings: RestaurantSettings, extra: int, tell_customers: bool,
+                  now: datetime, actor: User | None = None) -> int:
+    """Kitchen's busy-night button: new delivery customers are quoted the longer time, and (optionally)
+    customers already waiting get the same extra minutes and a "running late" message.
+    Returns how many waiting customers were told."""
+    from .settings_store import save_settings
+
+    added = extra - settings.busy_extra_minutes
+    settings.busy_extra_minutes = extra
+    save_settings(db, settings)
+    told = 0
+    if added > 0 and tell_customers:
+        waiting = db.scalars(select(Order).where(
+            Order.type.in_([OrderType.DELIVERY, OrderType.COLLECTION]),
+            Order.status.in_([Status.PLACED, Status.ACCEPTED, Status.PREPARING]),
+            Order.slot_start.is_(None),
+        )).all()
+        for o in waiting:
+            delay(db, outbox, o, added, settings, now, actor)
+            told += 1
+    outbox.add("kitchen", {"event": "busy_time", "extra_minutes": extra})
+    return told
+
+
+# --- Till (front counter) ----------------------------------------------------------------
+
+
+def create_till_order(db: Session, outbox: Outbox, data, actor: User, settings: RestaurantSettings, now: datetime) -> Order:
+    """A sale at the counter. Staff have already taken the money (card machine or cash), so the order is
+    paid and goes straight to the kitchen."""
+    lines = [_price_item(db, line) for line in data.items]
+    subtotal = sum(li.unit_price_pence * li.quantity for li in lines)
+    discount = min(data.discount_pence, subtotal)
+    order = Order(
+        type=OrderType.COLLECTION, status=Status.PLACED, channel="till", service=data.service,
+        payment_method=data.payment_method, customer_name=data.customer_name.strip() or
+        ("Eat in" if data.service == "eat_in" else "Takeaway"),
+        notes=data.notes, items=lines, subtotal_pence=subtotal, discount_pence=discount,
+        total_pence=subtotal - discount, paid_at=now,
+    )
+    if data.payment_method == "cash" and data.cash_given_pence is not None and data.cash_given_pence < order.total_pence:
+        raise OrderError("the cash given is less than the total")
+    db.add(order)
+    db.flush()
+    _record(db, order, Status.PLACED, actor, now, note=f"till · {data.payment_method}")
+    _broadcast(outbox, order, settings)
+    if settings.auto_accept:
+        accept(db, outbox, order, None, settings, now, actor)
+    return order
+
+
 # --- Payment -----------------------------------------------------------------------
 
 
@@ -250,6 +325,7 @@ def mark_paid(db: Session, outbox: Outbox, order: Order, settings: RestaurantSet
     if order.status is not Status.PENDING_PAYMENT:
         return order  # webhook retries are harmless
     order.paid_at = now
+    order.payment_method = order.payment_method or "online"
     order.hold_expires_at = None
     move(db, outbox, order, Status.PLACED, None, settings, now)
     if settings.auto_accept:
@@ -287,7 +363,7 @@ def delay(db, outbox, order: Order, minutes: int, settings, now, actor: User | N
     if order.status not in {Status.PLACED, Status.ACCEPTED, Status.PREPARING}:
         raise OrderError("only orders not yet ready can be delayed")
     order.extra_minutes += minutes
-    new_time = ready_time(order, settings)
+    new_time = arrive_by(order, settings) or ready_time(order, settings)
     _record(db, order, order.status, actor, now, note=f"+{minutes} min")
     notify.queue(db, order, order_flow.delay_message(new_time.astimezone(ZoneInfo(settings.timezone)), minutes), kind="delay")
     _broadcast(outbox, order, settings)
@@ -359,7 +435,7 @@ def _announce(db, outbox: Outbox, order: Order, settings: RestaurantSettings) ->
         order.status,
         order.type,
         restaurant=settings.name,
-        ready_at=ready_time(order, settings).astimezone(tz),
+        ready_at=(arrive_by(order, settings) or ready_time(order, settings)).astimezone(tz),
         slot_label=slot_label,
         table_number=table,
         reason=order.reject_reason,

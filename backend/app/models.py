@@ -155,6 +155,10 @@ class TableSession(TS, Base):
     booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id"))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The table asked for the bill at the till (staff then take card or cash).
+    pay_at_till_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_method: Mapped[str | None] = mapped_column(String(16))  # "card" | "cash" (at the till) | "online"
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(100))
     table: Mapped[DiningTable] = relationship()
     booking: Mapped[Booking | None] = relationship()
     orders: Mapped[list[Order]] = relationship(back_populates="table_session")
@@ -187,6 +191,15 @@ class Order(TS, Base):
 
     # Dine-in
     table_session_id: Mapped[int | None] = mapped_column(ForeignKey("table_sessions.id"), index=True)
+
+    # Delivery "as soon as possible": minutes promised to the customer when they ordered
+    # (delivery time + any busy-night extra); the kitchen's +5/+10 delays add extra_minutes on top.
+    promised_minutes: Mapped[int | None] = mapped_column(Integer)
+
+    # Where the order came from and how it was paid
+    channel: Mapped[str | None] = mapped_column(String(16))  # None/"online" website or app, "till" front counter
+    service: Mapped[str | None] = mapped_column(String(16))  # till orders: "takeaway" | "eat_in"
+    payment_method: Mapped[str | None] = mapped_column(String(16))  # "online" | "card" | "cash"
 
     # Kitchen timing
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -28,6 +28,23 @@ def _add_missing_columns(engine) -> None:
                     conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'))
 
 
+def _apply_upgrades() -> None:
+    """One-off data changes (new sauces, new delivery hours...), each applied once. See app/upgrades.py."""
+    from . import upgrades
+    from .db import get_db
+
+    db = next(get_db())
+    try:
+        done = upgrades.apply(db)
+        if done:
+            print(f"Applied upgrades: {', '.join(done)}")
+    except Exception as e:  # never stop the API from starting over this
+        db.rollback()
+        print(f"(upgrades skipped: {e})")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = get_config()
@@ -35,6 +52,7 @@ async def lifespan(app: FastAPI):
         engine = get_engine()
         Base.metadata.create_all(engine)  # production uses migrations (Alembic)
         _add_missing_columns(engine)
+    _apply_upgrades()
     yield
 
 

@@ -173,7 +173,7 @@ class OrderCreate(BaseModel):
     notes: str = Field("", max_length=500)
     tip_pence: int = Field(0, ge=0)
     promo_code: str | None = None
-    # delivery
+    # delivery (as soon as possible; slot_start is no longer used and is ignored)
     slot_start: datetime | None = None
     address: Address | None = None
     # dine-in: the signed token from the table's QR code
@@ -186,8 +186,8 @@ class OrderCreate(BaseModel):
 
     @model_validator(mode="after")
     def _by_type(self) -> OrderCreate:
-        if self.type is OrderType.DELIVERY and (self.slot_start is None or self.address is None):
-            raise ValueError("delivery orders need a slot and an address")
+        if self.type is OrderType.DELIVERY and self.address is None:
+            raise ValueError("delivery orders need an address")
         if self.type is OrderType.DINE_IN and not self.table_token:
             raise ValueError("dine-in orders need the table QR token")
         return self
@@ -228,6 +228,12 @@ class OrderOut(ORM):
     items: list[OrderItemOut]
     events: list[StatusEventOut]
     ready_at: datetime | None = None
+    arrive_by: datetime | None = None  # delivery: when the customer was told to expect it (updated by delays)
+    promised_minutes: int | None = None
+    extra_minutes: int = 0
+    channel: str | None = None
+    service: str | None = None
+    payment_method: str | None = None
     table_number: str | None = None
     view_token: str | None = None  # only on the order-placed response: lets a guest track this order
 
@@ -323,6 +329,10 @@ class BillOut(BaseModel):
     total_pence: int
     deposit_pence: int
     due_pence: int
+    table_session_id: int | None = None
+    paid: bool = False
+    pay_at_till: bool = False
+    payment_method: str | None = None
 
 
 class TableIn(BaseModel):
@@ -374,3 +384,36 @@ class WebPushIn(BaseModel):
 class NotifyTestIn(BaseModel):
     email: str | None = None
     phone: str | None = Field(None, max_length=32)
+
+
+class TillOrderIn(BaseModel):
+    """A sale at the front counter: staff take card (on their own card machine) or cash, then complete it."""
+
+    items: list[OrderItemIn] = Field(min_length=1)
+    service: str = Field("takeaway", pattern="^(takeaway|eat_in)$")
+    payment_method: str = Field(pattern="^(card|cash)$")
+    customer_name: str = Field("", max_length=120)
+    notes: str = Field("", max_length=500)
+    cash_given_pence: int | None = Field(None, ge=0)
+    discount_pence: int = Field(0, ge=0)
+
+
+class TablePaidIn(BaseModel):
+    payment_method: str = Field("card", pattern="^(card|cash|online)$")
+
+
+class BusyTimeIn(BaseModel):
+    extra_minutes: int = Field(ge=0, le=180)
+    tell_customers: bool = True
+
+
+class TableTabOut(BaseModel):
+    """An open table on the till screen."""
+
+    table_session_id: int
+    table_number: str
+    orders: int
+    total_pence: int
+    due_pence: int
+    pay_at_till: bool
+    opened_at: datetime | None = None

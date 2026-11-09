@@ -25,6 +25,7 @@ router = APIRouter(tags=["orders"])
 def order_out(order: Order, s: RestaurantSettings) -> OrderOut:
     out = OrderOut.model_validate(order)
     out.ready_at = svc.ready_time(order, s)
+    out.arrive_by = svc.arrive_by(order, s)
     out.table_number = order.table_session.table.number if order.table_session else None
     return out
 
@@ -126,6 +127,11 @@ async def stripe_webhook(
         order = db.scalar(select(Order).where(Order.stripe_payment_intent_id == intent["id"]))
         if order is not None:
             svc.mark_paid(db, outbox, order, s, utcnow())
+            db.commit()
+        elif (intent.get("metadata") or {}).get("table_session_id"):
+            from .dine_in import mark_table_paid_online
+
+            mark_table_paid_online(db, outbox, int(intent["metadata"]["table_session_id"]), s, utcnow())
             db.commit()
     return {"received": True}
 

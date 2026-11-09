@@ -115,6 +115,8 @@ def customer_message(
     if status is Status.ACCEPTED:
         if slot_label:
             return Message(f"Accepted by {restaurant}", f"Your order is confirmed for {slot_label}.")
+        if order_type is OrderType.DELIVERY:
+            return Message(f"Accepted by {restaurant}", f"Your order should arrive around {_clock(ready_at)}.")
         return Message(f"Accepted by {restaurant}", f"Your order will be ready around {_clock(ready_at)}.")
     if status is Status.PREPARING:
         return Message("Cooking now", "The chef has started cooking your order.")

@@ -90,19 +90,27 @@ function SettingsForm({ initial, onSaved }) {
 
       <div className="cards">
         <section className="card">
-          <h2>Delivery slots</h2>
+          <h2>Delivery</h2>
           <Toggle checked={s.delivery_enabled} onChange={set("delivery_enabled")} label="Take delivery orders" />
+          <fieldset className="allergens">
+            <legend>Delivery days</legend>
+            {DAYS.map((d) => (
+              <label key={d} className="chip-check cap">
+                <input type="checkbox" checked={(s.delivery_days || []).includes(d)}
+                  onChange={(e) => set("delivery_days")(e.target.checked ? DAYS.filter((x) => x === d || (s.delivery_days || []).includes(x)) : (s.delivery_days || []).filter((x) => x !== d))} /> {d}
+              </label>
+            ))}
+          </fieldset>
           <div className="grid2">
             <Field label="Deliveries from"><input type="time" value={hhmm(s.delivery_start)} onChange={(e) => set("delivery_start")(e.target.value)} /></Field>
-            <Field label="Last slot ends"><input type="time" value={hhmm(s.delivery_end)} onChange={(e) => set("delivery_end")(e.target.value)} /></Field>
-            <Field label="Slot length (minutes)"><input type="number" min="5" max="120" value={s.slot_minutes} onChange={num("slot_minutes")} /></Field>
-            <Field label="Drivers on shift"><input type="number" min="0" value={s.drivers_on_shift} onChange={num("drivers_on_shift")} /></Field>
-            <Field label="Orders per driver per slot"><input type="number" min="1" value={s.orders_per_driver_per_slot} onChange={num("orders_per_driver_per_slot")} /></Field>
-            <Field label="Earliest slot (minutes from now)"><input type="number" min="0" value={s.min_lead_minutes} onChange={num("min_lead_minutes")} /></Field>
-            <Field label="Hold slot while paying (minutes)"><input type="number" min="1" value={s.slot_hold_minutes} onChange={num("slot_hold_minutes")} /></Field>
-            <Field label="Book days ahead" hint="0 = today only"><input type="number" min="0" max="14" value={s.max_days_ahead} onChange={num("max_days_ahead")} /></Field>
+            <Field label="Last orders at"><input type="time" value={hhmm(s.delivery_end)} onChange={(e) => set("delivery_end")(e.target.value)} /></Field>
+            <Field label="Delivered within (minutes)" hint="What customers are told, e.g. 45"><input type="number" min="10" max="180" value={s.delivery_minutes} onChange={num("delivery_minutes")} /></Field>
+            <Field label="Busy-night extra now (minutes)" hint="The kitchen screen's +5 / +10 buttons change this"><input type="number" min="0" max="180" value={s.busy_extra_minutes} onChange={num("busy_extra_minutes")} /></Field>
+            <Field label="'Busy' buttons on the kitchen screen" hint="Comma separated, e.g. 5, 10, 15, 20, 30">
+              <input value={(s.delay_choices || []).join(", ")} onChange={(e) => set("delay_choices")(e.target.value.split(",").map((x) => parseInt(x, 10)).filter((x) => x > 0))} />
+            </Field>
           </div>
-          <p className="muted">Each slot takes {Number(s.drivers_on_shift || 0) * Number(s.orders_per_driver_per_slot || 0)} orders. When full it shows as booked.</p>
+          <p className="muted">Orders are delivered as soon as possible: no time slots. Customers are told about {Number(s.delivery_minutes || 0) + Number(s.busy_extra_minutes || 0)} minutes.</p>
         </section>
 
         <section className="card">

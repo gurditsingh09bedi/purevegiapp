@@ -5,17 +5,34 @@ import { money, whenOpen } from "./format.js";
 import { Link, navigate, openNow, useApp } from "./state.jsx";
 
 // Shown while we're closed: you can still order, for later.
+// Shown when we're not taking online orders right now: delivery runs Fri-Sun 5-10pm,
+// collection while the restaurant is open.
 export function ClosedBanner({ compact = false }) {
   const { restaurant, table } = useApp();
   if (!restaurant || table) return null;
-  const closed = typeof restaurant.open_now === "boolean" ? !restaurant.open_now : openNow(restaurant) === false;
-  if (!closed) return null;
+  const shopOpen = typeof restaurant.open_now === "boolean" ? restaurant.open_now : openNow(restaurant) !== false;
+  const d = restaurant.delivery || {};
+  const deliveryOpen = d.enabled && d.open_now;
+  const collection = restaurant.collection_enabled !== false && shopOpen;
+  if (deliveryOpen) return null;
+  if (collection) {
+    // Open for collection, just not delivering (e.g. a weekday)
+    return (
+      <div className={`closed-banner soft ${compact ? "compact" : ""}`} role="status">
+        <span className="closed-moon" aria-hidden="true">🛵</span>
+        <div>
+          <b>Collection is open now.</b>
+          <p>{d.hours_text || "We deliver Friday to Sunday, 5pm to 10pm."}</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={`closed-banner ${compact ? "compact" : ""}`} role="status">
       <span className="closed-moon" aria-hidden="true">🌙</span>
       <div>
         <b>We're closed right now{restaurant.next_open ? `. We open ${whenOpen(restaurant.next_open)}` : ""}.</b>
-        <p>{compact ? "You can still order for later: pick a time at checkout." : "Order now for later: choose a delivery slot or collection time at checkout, and it'll be fresh and ready on time."}</p>
+        <p>{d.hours_text || "We deliver Friday to Sunday, 5pm to 10pm."} {compact ? "" : "Have a look at the menu in the meantime."}</p>
       </div>
     </div>
   );
@@ -35,7 +52,7 @@ export function Header() {
       ) : (
         <nav className="main-nav" aria-label="Main">
           <a href="/#menu" onClick={(e) => { e.preventDefault(); navigate("/"); setTimeout(() => document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" }), 50); }}>Menu</a>
-          <Link to="/book">Book a table</Link>
+          {restaurant?.bookings_enabled && <Link to="/book">Book a table</Link>}
           <Link to="/account">{user ? "My orders" : "Log in"}</Link>
         </nav>
       )}
@@ -335,7 +352,7 @@ function TabIcon({ d }) {
   return <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 export function TabBar({ path }) {
-  const { count, setCartOpen, user } = useApp();
+  const { count, setCartOpen, user, restaurant } = useApp();
   const tab = (key, label, active, onClick, badge) => (
     <button key={key} className={`tab ${active ? "on" : ""}`} aria-current={active ? "page" : undefined}
       onClick={() => { buzz(8); onClick(); }}>
@@ -347,7 +364,7 @@ export function TabBar({ path }) {
   return (
     <nav className="tabbar" aria-label="App">
       {tab("menu", "Menu", onHome, () => { if (!onHome) navigate("/"); setTimeout(() => document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" }), onHome ? 0 : 120); })}
-      {tab("book", "Book", path === "/book" || path.startsWith("/booking/"), () => navigate("/book"))}
+      {restaurant?.bookings_enabled && tab("book", "Book", path === "/book" || path.startsWith("/booking/"), () => navigate("/book"))}
       {tab("orders", user ? "My orders" : "Orders", path === "/account" || path.startsWith("/order/"), () => navigate("/account"))}
       {tab("basket", "Basket", false, () => setCartOpen(true), count)}
     </nav>

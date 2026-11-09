@@ -5,7 +5,7 @@
 //    settles, then swings away while the next arrives. Only the chapter on screen plays.
 // Respects reduced motion and data saver (posters only, tap to play). Plain CSS 3D, no library.
 import { useEffect, useRef, useState } from "react";
-import { Link } from "./state.jsx";
+import { Link, useApp } from "./state.jsx";
 
 const M = "/media/";
 const CHAPTERS = [
@@ -32,7 +32,7 @@ const CHAPTERS = [
   },
   {
     id: "dine", kicker: "Come sit with us", title: "324 Soho Road, Handsworth",
-    text: "A bright, comfy dining room, open every day from 12pm. Book your table online and we'll have it ready.",
+    text: "A bright, comfy dining room, open every day from 12pm. Walk in, scan the QR code on your table and order from your phone.",
     video: "dine", book: true,
   },
 ];
@@ -72,6 +72,7 @@ function play(v) {
 }
 
 export default function FoodFilm() {
+  const canBook = useApp().restaurant?.bookings_enabled === true;
   const [calm] = useState(calmMode);
   return (
     <>
@@ -140,7 +141,8 @@ function Hero({ calm }) {
           <p className="ff-lede">Hand-stretched pizza, flame-tossed noodles, stacked burgers and sizzlers. Delivered, collected, or at our table.</p>
           <div className="ff-ctas">
             <button className="btn primary big" onClick={() => showMenu()}>Order now</button>
-            <Link to="/book" className="btn ghost big">Book a table</Link>
+            {canBook ? <Link to="/book" className="btn ghost big">Book a table</Link>
+              : <a href="tel:01215547949" className="btn ghost big">Call 0121 554 7949</a>}
           </div>
         </div>
         <div className="ff-hero-frame">
@@ -180,13 +182,14 @@ function Photo({ p, className = "" }) {
 }
 
 function ChapterCopy({ c, i }) {
+  const canBook = useApp().restaurant?.bookings_enabled === true;
   return (
     <>
       <p className="ff-kicker"><span>{String(i + 1).padStart(2, "0")}</span>{c.kicker}</p>
       <h2>{c.title}</h2>
       <p className="ff-text">{c.text}</p>
       <div className="ff-ctas">
-        {c.book
+        {c.book && canBook
           ? <><Link to="/book" className="btn primary">Book a table</Link><button className="btn ghost" onClick={() => showMenu()}>Order online</button></>
           : <button className="btn primary" onClick={() => showMenu(c.menu)}>{c.cta}</button>}
       </div>

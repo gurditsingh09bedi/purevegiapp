@@ -80,6 +80,7 @@ export default function Track({ id }) {
   if (unpaid) headline = "Waiting for payment";
   else if (stopped) headline = order.status === "rejected" ? "Sorry, we couldn't take this order" : "Order cancelled";
   else if (order.type === "delivery" && order.slot_start && !DONE.includes(order.status)) headline = `Arriving ${clock(order.slot_start)}–${clock(order.slot_end)}`;
+  else if (order.type === "delivery" && order.arrive_by && !DONE.includes(order.status)) headline = `Arriving around ${clock(order.arrive_by)}`;
   else if (!DONE.includes(order.status)) headline = `Ready around ${clock(order.ready_at)}`;
   else headline = "Enjoy your meal!";
 

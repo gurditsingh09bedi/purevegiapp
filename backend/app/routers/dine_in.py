@@ -16,9 +16,19 @@ from ..domain.order_flow import Message, Status
 from ..domain.settings import RestaurantSettings
 from ..models import STAFF_ROLES, Booking, DiningTable, TableSession, User
 from ..realtime import Outbox, get_outbox
-from ..schemas import BillOut, BookingIn, BookingMessageIn, BookingOut, BookingStatusIn, BookingTimeOut, FreeTable
+from ..schemas import (
+    BillOut,
+    BookingIn,
+    BookingMessageIn,
+    BookingOut,
+    BookingStatusIn,
+    BookingTimeOut,
+    FreeTable,
+    PaymentStart,
+    TablePaidIn,
+)
 from ..security import create_token, decode_token
-from ..services import notify
+from ..services import notify, payments
 from ..services import orders as svc
 from .orders import order_out
 
@@ -275,18 +285,101 @@ def table_bill(session_id: int, db: Session = Depends(get_db), s: RestaurantSett
 
 
 @router.post("/tables/sessions/{session_id}/paid", status_code=204)
-def table_paid(session_id: int, db: Session = Depends(get_db), _: User = Depends(kitchen_staff),
-               s: RestaurantSettings = Depends(settings), outbox: Outbox = Depends(get_outbox),
-               at: datetime = Depends(now)):
-    """Staff confirm the bill is paid (card terminal or cash); closes the tab, sends the review prompt."""
+def table_paid(session_id: int, body: TablePaidIn | None = None, db: Session = Depends(get_db),
+               _: User = Depends(kitchen_staff), s: RestaurantSettings = Depends(settings),
+               outbox: Outbox = Depends(get_outbox), at: datetime = Depends(now)):
+    """Staff confirm the bill is paid at the till (card machine or cash); closes the tab, sends the review prompt."""
     ts = db.get(TableSession, session_id)
     if ts is None or ts.closed_at is not None:
         raise HTTPException(404, "open table not found")
+    _close_paid(db, outbox, ts, (body or TablePaidIn()).payment_method, s, at)
+    db.commit()
+
+
+def _close_paid(db: Session, outbox: Outbox, ts: TableSession, method: str, s: RestaurantSettings, at: datetime) -> None:
     for o in ts.orders:
         if o.paid_at is None and o.status not in {Status.REJECTED, Status.CANCELLED}:
             o.paid_at = at
+            o.payment_method = method
+    ts.payment_method = method
     svc.close_table_session(db, outbox, ts, s, at)
+
+
+# --- The table's own phone (QR code): see the bill, pay online or ask to pay at the till ------
+
+
+def _session_from_qr(db: Session, token: str, cfg: AppConfig) -> TableSession:
+    try:
+        table_id = int(decode_token(token, cfg.jwt_secret, kind="table")["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise HTTPException(404, "this table code isn't valid") from None
+    ts = db.scalars(select(TableSession).where(TableSession.table_id == table_id, TableSession.closed_at.is_(None))).first()
+    if ts is None:
+        raise HTTPException(404, "nothing ordered at this table yet")
+    return ts
+
+
+def _bill(ts: TableSession, s: RestaurantSettings) -> BillOut:
+    live = [o for o in ts.orders if o.status not in {Status.REJECTED, Status.CANCELLED}]
+    total = sum(o.total_pence for o in live)
+    deposit = ts.booking.deposit_pence if ts.booking and ts.booking.deposit_paid else 0
+    return BillOut(table_number=ts.table.number, orders=[order_out(o, s) for o in live], total_pence=total,
+                   deposit_pence=deposit, due_pence=rules.amount_due_at_end(total, deposit), table_session_id=ts.id,
+                   paid=ts.paid, pay_at_till=ts.pay_at_till_at is not None, payment_method=ts.payment_method)
+
+
+@router.get("/tables/qr/{token}/bill", response_model=BillOut)
+def my_table_bill(token: str, db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings),
+                  cfg: AppConfig = Depends(config)):
+    return _bill(_session_from_qr(db, token, cfg), s)
+
+
+@router.post("/tables/qr/{token}/pay-at-till", response_model=BillOut)
+def ask_to_pay_at_till(token: str, db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings),
+                       cfg: AppConfig = Depends(config), outbox: Outbox = Depends(get_outbox), at: datetime = Depends(now)):
+    """"We'll pay at the till": the till screen shows this table at the top."""
+    ts = _session_from_qr(db, token, cfg)
+    ts.pay_at_till_at = ts.pay_at_till_at or at
+    outbox.add("kitchen", {"event": "table_pay_at_till", "table_session_id": ts.id, "table_number": ts.table.number})
     db.commit()
+    return _bill(ts, s)
+
+
+@router.post("/tables/qr/{token}/pay", response_model=PaymentStart)
+def pay_table_online(token: str, db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings),
+                     cfg: AppConfig = Depends(config)):
+    """Pay the whole table bill from the phone (card, Apple Pay, Google Pay)."""
+    ts = _session_from_qr(db, token, cfg)
+    due = _bill(ts, s).due_pence
+    if due <= 0:
+        raise HTTPException(409, "nothing to pay")
+    try:
+        result = payments.create_table_intent(ts, due, cfg)
+    except payments.PaymentsNotConfigured as e:
+        raise HTTPException(503, str(e)) from None
+    db.commit()
+    return result
+
+
+@router.post("/tables/qr/{token}/test-pay", response_model=BillOut)
+def test_pay_table(token: str, db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings),
+                   cfg: AppConfig = Depends(config), outbox: Outbox = Depends(get_outbox), at: datetime = Depends(now)):
+    """Test mode only (no Stripe keys): the table's pay button marks the bill paid online."""
+    if not cfg.dev_payments or cfg.stripe_secret_key:
+        raise HTTPException(404)
+    ts = _session_from_qr(db, token, cfg)
+    bill = _bill(ts, s)
+    _close_paid(db, outbox, ts, "online", s, at)
+    db.commit()
+    bill.paid, bill.payment_method = True, "online"
+    return bill
+
+
+def mark_table_paid_online(db: Session, outbox: Outbox, session_id: int, s: RestaurantSettings, at: datetime) -> None:
+    """Called from the Stripe webhook when a table bill is paid."""
+    ts = db.get(TableSession, session_id)
+    if ts is not None and ts.closed_at is None:
+        _close_paid(db, outbox, ts, "online", s, at)
 
 
 _STATUSES = "^(pending|confirmed|seated|declined|cancelled|no_show)$"

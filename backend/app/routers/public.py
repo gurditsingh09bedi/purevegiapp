@@ -14,10 +14,11 @@ from ..db import get_db
 from ..deps import config, now, settings
 from ..domain import delivery, kitchen, slots
 from ..domain.order_flow import Status
-from ..domain.settings import RestaurantSettings
+from ..domain.settings import WEEKDAYS, RestaurantSettings
 from ..models import Category, DiningTable, MenuItem, OptionGroup, Order
 from ..schemas import CategoryOut, QuoteIn, QuoteOut, SlotOut
 from ..security import decode_token
+from ..services import orders as svc
 from ..services.orders import day_bounds, occupied_slot_starts
 
 router = APIRouter(tags=["public"])
@@ -32,8 +33,10 @@ def _busy(db: Session, s: RestaurantSettings, at) -> dict:
         )
     ) or 0
     load = kitchen.kitchen_load(on, s.default_prep_minutes, s.busy_orders, s.very_busy_orders, s.minutes_per_extra_order)
-    return {"level": load.level, "orders": load.orders, "wait_minutes": load.wait_minutes,
-            "paused": s.online_orders_paused, "open_now": slots.open_now(s, at)}
+    return {"level": load.level, "orders": load.orders, "wait_minutes": load.wait_minutes + s.busy_extra_minutes,
+            "delivery_minutes": svc.quoted_delivery_minutes(s), "busy_extra_minutes": s.busy_extra_minutes,
+            "paused": s.online_orders_paused, "open_now": slots.open_now(s, at),
+            "delivery_open": slots.delivery_open(s, at)}
 
 
 def _special(db: Session, s: RestaurantSettings, at) -> dict | None:
@@ -54,6 +57,7 @@ def busy(db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings
 @router.get("/restaurant")
 def restaurant(db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings), at=Depends(now)):
     nxt = slots.next_opening(s, at)
+    nxt_delivery = slots.next_delivery_open(s, at)
     return {
         "busy": _busy(db, s, at),
         "special": _special(db, s, at),
@@ -69,6 +73,11 @@ def restaurant(db: Session = Depends(get_db), s: RestaurantSettings = Depends(se
         "delivery": {
             "enabled": s.delivery_enabled,
             "hours": [s.delivery_start.isoformat(), s.delivery_end.isoformat()],
+            "days": [d for d in WEEKDAYS if d in s.delivery_days],
+            "open_now": slots.delivery_open(s, at),
+            "next_open": nxt_delivery.isoformat() if nxt_delivery else None,
+            "minutes": svc.quoted_delivery_minutes(s),
+            "hours_text": svc.delivery_hours_text(s, at),
             "free_radius_miles": s.free_radius_miles,
             "fee_beyond_free_pence": s.fee_beyond_free_pence,
             "min_order_pence": s.min_order_pence,
@@ -82,6 +91,7 @@ def restaurant(db: Session = Depends(get_db), s: RestaurantSettings = Depends(se
         "booking_deposit_per_guest": s.booking_deposit_per_guest,
         "booking_slot_minutes": s.booking_slot_minutes,
         "collection_enabled": s.collection_enabled,
+        "delay_choices": s.delay_choices,
         "google_review_url": str(s.google_review_url) if s.google_review_url else None,
         "timezone": s.timezone,
     }

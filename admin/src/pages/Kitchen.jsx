@@ -44,6 +44,7 @@ export default function Kitchen() {
   const knownReq = useRef(null);
   const soundRef = useRef(soundOn);
   soundRef.current = soundOn;
+  const bookingsOn = useRef(false); // table booking switched off (Nov 2026): no requests panel
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +73,7 @@ export default function Kitchen() {
   }, []);
 
   const loadRequests = useCallback(async () => {
+    if (!bookingsOn.current) { requestsRef.current = []; setRequests([]); return; }
     try {
       const rows = await api("/bookings", { query: { status: "pending" }, quiet: true });
       requestsRef.current = rows;
@@ -92,12 +94,23 @@ export default function Kitchen() {
   useEffect(() => {
     load();
     loadRequests();
-    api("/restaurant").then((r) => { setOpeningHours(r.opening_hours); setInfo(r); }).catch(() => {});
+    api("/restaurant").then((r) => {
+      setOpeningHours(r.opening_hours);
+      setInfo(r);
+      bookingsOn.current = !!r.bookings_enabled;
+      loadRequests();
+    }).catch(() => {});
     const poll = setInterval(() => { load(); loadRequests(); }, 15000);
     const clockTick = setInterval(() => setNow(Date.now()), 30000);
     const stop = kitchenSocket((ev) => {
       if (ev.event === "online_orders_paused") setInfo((i) => (i ? { ...i, online_orders_paused: ev.paused } : i));
       if (ev.event?.startsWith("booking")) { loadRequests(); return; } // requests are announced by loadRequests
+      if (ev.event === "busy_time") { setMeter((m) => (m ? { ...m, busy_extra_minutes: ev.extra_minutes } : m)); }
+      if (ev.event === "table_pay_at_till") {
+        toast(`Table ${ev.table_number} would like to pay at the till`);
+        if (soundRef.current && kitchenAwake()) { const w = chime(); setTimeout(() => say(`Table number ${ev.table_number} would like to pay at the till.`), w); }
+        return;
+      }
       load();
     });
     return () => { clearInterval(poll); clearInterval(clockTick); stop(); };
@@ -161,6 +174,19 @@ export default function Kitchen() {
   }
 
   const choices = info?.prep_minute_choices || [10, 15, 20, 30];
+  const delays = info?.delay_choices || [5, 10, 15, 20, 30];
+  const extra = meter?.busy_extra_minutes || 0;
+  const baseMins = (meter?.delivery_minutes || 45) - (meter?.busy_extra_minutes || 0);
+
+  async function setBusyTime(next) {
+    const r = await attempt(() => api("/kitchen/busy-time", { method: "POST", body: { extra_minutes: next, tell_customers: true } }),
+      next ? `Delivery time now ${baseMins + next} min` : `Delivery time back to ${baseMins} min`);
+    if (r) {
+      setMeter((m) => ({ ...(m || {}), busy_extra_minutes: r.busy_extra_minutes, delivery_minutes: r.delivery_minutes }));
+      if (r.customers_told) toast(`${r.customers_told} waiting customer${r.customers_told > 1 ? "s" : ""} told the new time`);
+      load();
+    }
+  }
   const waitingOrders = (tickets || []).filter((t) => t.order.status === "placed").map((t) => t.order);
 
   return (
@@ -182,6 +208,16 @@ export default function Kitchen() {
         >
           {info?.online_orders_paused ? "Online orders PAUSED · tap to resume" : "Busy? Pause online orders"}
         </button>
+      </div>
+
+      <div className="delivery-time" role="group" aria-label="Delivery time">
+        <span className="dt-now">🛵 Delivery time <b>{baseMins + extra} min</b>{extra ? <span className="dt-extra"> (+{extra} busy)</span> : null}</span>
+        <span className="muted small-label">Busy? Add</span>
+        {delays.map((m) => (
+          <button key={m} className="btn ghost" onClick={() => setBusyTime(extra + m)}>+{m}</button>
+        ))}
+        {extra > 0 && <button className="btn" onClick={() => setBusyTime(0)}>Back to {baseMins} min</button>}
+        <span className="muted small">New customers see the new time; customers already waiting get a text.</span>
       </div>
 
       {soundOn && !ready && (
@@ -227,7 +263,7 @@ export default function Kitchen() {
                 <h2>{col.title} <span className="count">{list.length}</span></h2>
                 {list.length === 0 && <p className="muted empty">Nothing here</p>}
                 {list.map((t) => (
-                  <Ticket key={t.order.id} t={t} now={now} choices={choices} act={act} />
+                  <Ticket key={t.order.id} t={t} now={now} choices={choices} delays={delays} act={act} />
                 ))}
               </section>
             );
@@ -238,14 +274,17 @@ export default function Kitchen() {
   );
 }
 
-function Ticket({ t, now, choices, act }) {
+function Ticket({ t, now, choices, delays, act }) {
   const o = t.order;
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const id = o.id;
+  const till = o.channel === "till";
   const where =
-    o.type === "delivery" ? `${dayWord(o.slot_start)}Slot ${clock(o.slot_start)}–${clock(o.slot_end)}`
+    o.type === "delivery" && o.slot_start ? `${dayWord(o.slot_start)}Slot ${clock(o.slot_start)}–${clock(o.slot_end)}`
+    : o.type === "delivery" ? `Deliver by ${clock(o.arrive_by)}${o.address?.postcode ? ` · ${o.address.postcode}` : ""}`
     : o.type === "dine_in" ? `Table ${o.table_number || "?"}`
+    : till ? `${o.service === "eat_in" ? "Eat in" : "Takeaway"} · ${o.customer_name}`
     : o.customer_name || "Collection";
   const waited = minutesFrom(o.created_at, now);
 
@@ -253,7 +292,7 @@ function Ticket({ t, now, choices, act }) {
     <article className={`ticket u-${t.urgency}`}>
       <header>
         <span className="ticket-no">#{id}</span>
-        <span className={`badge t-${o.type}`}>{TYPE_LABEL[o.type]}</span>
+        <span className={`badge t-${till ? "till" : o.type}`}>{till ? `Till · ${o.payment_method === "cash" ? "cash" : "card"} paid` : TYPE_LABEL[o.type]}</span>
         <span className={`urgency u-${t.urgency}`}>{URGENCY_WORD[t.urgency]}</span>
       </header>
       <p className="where">{where}</p>
@@ -299,8 +338,10 @@ function Ticket({ t, now, choices, act }) {
         )}
         {["accepted", "preparing"].includes(o.status) && (
           <>
-            <button className="btn ghost" onClick={() => act(`/kitchen/orders/${id}/delay`, { minutes: 5 }, `#${id}: +5 min, customer told`)}>+5 min</button>
-            <button className="btn ghost" onClick={() => act(`/kitchen/orders/${id}/delay`, { minutes: 10 }, `#${id}: +10 min, customer told`)}>+10 min</button>
+            <span className="muted small-label">Late?</span>
+            {delays.slice(0, 3).map((m) => (
+              <button key={m} className="btn ghost" onClick={() => act(`/kitchen/orders/${id}/delay`, { minutes: m }, till ? `#${id}: +${m} min` : `#${id}: +${m} min, customer told`)}>+{m}</button>
+            ))}
           </>
         )}
         {o.status === "ready" && o.type !== "delivery" && (

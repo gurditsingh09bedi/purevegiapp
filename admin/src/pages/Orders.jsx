@@ -9,6 +9,12 @@ export default function Orders() {
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState(null);
   const state = useLoad(() => api("/admin/orders", { query: { status: status || undefined, limit: 200 } }), [status]);
+  const takings = useLoad(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(start.getTime() + 86400000);
+    return api("/admin/reports/payments", { query: { start: start.toISOString(), end: end.toISOString() } });
+  });
+  const by = Object.fromEntries((takings.data || []).map((r) => [r.method, r]));
 
   return (
     <>
@@ -18,26 +24,34 @@ export default function Orders() {
         </select>
         <button className="btn ghost" onClick={state.reload}>Refresh</button>
       </PageHead>
+      {takings.data && (
+        <section className="cards takings" aria-label="Today's takings">
+          {[["card", "💳 Card (till)"], ["cash", "💷 Cash (till)"], ["online", "🌐 Online"]].map(([k, label]) => (
+            <div key={k} className="card stat"><span className="muted">{label}</span><b>{money(by[k]?.total_pence || 0)}</b><span className="muted small">{by[k]?.orders || 0} sales today</span></div>
+          ))}
+        </section>
+      )}
       <Loading state={state}>
         {(orders) =>
           orders.length === 0 ? <p className="muted">No orders yet.</p> : (
             <table className="table card">
-              <thead><tr><th>#</th><th>Placed</th><th>Type</th><th>Customer</th><th>When</th><th>Status</th><th className="num">Total</th></tr></thead>
+              <thead><tr><th>#</th><th>Placed</th><th>Type</th><th>Customer</th><th>When</th><th>Status</th><th>Paid</th><th className="num">Total</th></tr></thead>
               <tbody>
                 {orders.map((o) => (
                   <Fragment key={o.id}>
                     <tr className="click" onClick={() => setOpen(open === o.id ? null : o.id)}>
                       <td>{o.id}</td>
                       <td>{dayAndTime(o.created_at)}</td>
-                      <td>{TYPE_LABEL[o.type]}</td>
+                      <td>{o.channel === "till" ? `Till · ${o.service === "eat_in" ? "eat in" : "takeaway"}` : TYPE_LABEL[o.type]}</td>
                       <td>{o.customer_name || (o.table_number ? `Table ${o.table_number}` : "Guest")}</td>
-                      <td>{o.slot_start ? `${clock(o.slot_start)}–${clock(o.slot_end)}` : clock(o.ready_at)}</td>
+                      <td>{o.slot_start ? `${clock(o.slot_start)}–${clock(o.slot_end)}` : clock(o.arrive_by || o.ready_at)}</td>
                       <td><span className={`badge s-${o.status}`}>{STATUS_LABEL[o.status]}</span></td>
+                      <td>{o.paid_at ? (o.payment_method || "online") : "—"}</td>
                       <td className="num">{money(o.total_pence)}</td>
                     </tr>
                     {open === o.id && (
                       <tr className="detail">
-                        <td colSpan="7">
+                        <td colSpan="8">
                           <div className="grid2">
                             <div>
                               <h3>Items</h3>

@@ -1,6 +1,6 @@
 """Kitchen screen and driver app actions."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -12,9 +12,9 @@ from ..deps import config, drivers, kitchen_staff, now, settings
 from ..domain import kitchen
 from ..domain.order_flow import OrderType, Status
 from ..domain.settings import RestaurantSettings
-from ..models import DriverLocation, Order, User
+from ..models import DriverLocation, Order, TableSession, User
 from ..realtime import Outbox, get_outbox
-from ..schemas import AcceptIn, DelayIn, LocationIn, OrderOut, RejectIn, TicketOut
+from ..schemas import AcceptIn, BusyTimeIn, DelayIn, LocationIn, OrderOut, RejectIn, TableTabOut, TicketOut, TillOrderIn
 from ..services import orders as svc
 from ..services.settings_store import save_settings
 from .orders import order_out
@@ -125,6 +125,51 @@ def pause_online_orders(paused: bool, db: Session = Depends(get_db), _: User = D
     db.commit()
     outbox.add("kitchen", {"event": "online_orders_paused", "paused": paused})
     return {"online_orders_paused": paused}
+
+
+@router.post("/kitchen/busy-time")
+def busy_time(body: BusyTimeIn, db: Session = Depends(get_db), user: User = Depends(kitchen_staff),
+              s: RestaurantSettings = Depends(settings), outbox: Outbox = Depends(get_outbox), at=Depends(now)):
+    """Busy night: add minutes to the delivery time customers are quoted (e.g. 45 -> 60 min).
+    With tell_customers, people already waiting get the extra minutes and a text too."""
+    told = svc.set_busy_time(db, outbox, s, body.extra_minutes, body.tell_customers, at, user)
+    db.commit()
+    return {"busy_extra_minutes": s.busy_extra_minutes, "delivery_minutes": svc.quoted_delivery_minutes(s),
+            "customers_told": told}
+
+
+# --- Till (front counter) -----------------------------------------------------------
+
+
+@router.post("/till/orders", response_model=OrderOut, status_code=201)
+def till_order(body: TillOrderIn, db: Session = Depends(get_db), user: User = Depends(kitchen_staff),
+               s: RestaurantSettings = Depends(settings), outbox: Outbox = Depends(get_outbox), at=Depends(now)):
+    """Counter sale: the money is taken first (card machine or cash), then the sale is completed here
+    and goes to the kitchen."""
+    try:
+        order = svc.create_till_order(db, outbox, body, user, s, at)
+    except svc.OrderError as e:
+        db.rollback()
+        raise HTTPException(e.status_code, str(e)) from None
+    db.commit()
+    return order_out(order, s)
+
+
+@router.get("/till/tables", response_model=list[TableTabOut])
+def open_tables(db: Session = Depends(get_db), _: User = Depends(kitchen_staff)):
+    """Tables with an open tab, for taking payment at the till. Tables that asked to pay at the till first."""
+    out = []
+    for ts in db.scalars(select(TableSession).where(TableSession.closed_at.is_(None))).all():
+        live = [o for o in ts.orders if o.status not in {Status.REJECTED, Status.CANCELLED}]
+        if not live:
+            continue
+        total = sum(o.total_pence for o in live)
+        deposit = ts.booking.deposit_pence if ts.booking and ts.booking.deposit_paid else 0
+        out.append(TableTabOut(table_session_id=ts.id, table_number=ts.table.number, orders=len(live),
+                               total_pence=total, due_pence=max(0, total - deposit),
+                               pay_at_till=ts.pay_at_till_at is not None,
+                               opened_at=min(svc.aware(o.created_at) for o in live)))
+    return sorted(out, key=lambda t: (not t.pay_at_till, t.opened_at or datetime.min.replace(tzinfo=UTC)))
 
 
 # --- Drivers -------------------------------------------------------------------------

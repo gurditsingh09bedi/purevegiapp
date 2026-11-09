@@ -11,11 +11,13 @@ import Tables from "./pages/Tables.jsx";
 import Staff from "./pages/Staff.jsx";
 import Driver from "./pages/Driver.jsx";
 import Bookings from "./pages/Bookings.jsx";
+import Till from "./pages/Till.jsx";
 
 const ADMIN = ["owner", "manager"];
 const PAGES = [
   { id: "kitchen", label: "Kitchen", roles: ["owner", "manager", "kitchen", "waiter"], el: Kitchen },
-  { id: "bookings", label: "Bookings", roles: ["owner", "manager", "waiter", "kitchen"], el: Bookings },
+  { id: "till", label: "Till", roles: ["owner", "manager", "kitchen", "waiter"], el: Till },
+  { id: "bookings", label: "Bookings", roles: ["owner", "manager", "waiter", "kitchen"], el: Bookings, needs: "bookings_enabled" },
   { id: "driver", label: "Deliveries", roles: ["driver", "owner", "manager"], el: Driver },
   { id: "orders", label: "Orders", roles: ADMIN, el: Orders },
   { id: "menu", label: "Menu", roles: ADMIN, el: Menu },
@@ -39,6 +41,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(Boolean(getToken()));
   const hash = useHash();
+  const [info, setInfo] = useState(null); // restaurant switches, e.g. table booking off
+
+  useEffect(() => { if (user) api("/restaurant").then(setInfo).catch(() => {}); }, [user]);
 
   useEffect(() => {
     if (!getToken()) return;
@@ -60,7 +65,7 @@ export default function App() {
     );
   }
 
-  const allowed = PAGES.filter((p) => p.roles.includes(user.role));
+  const allowed = PAGES.filter((p) => p.roles.includes(user.role) && (!p.needs || info?.[p.needs]));
   const page = allowed.find((p) => p.id === hash) || allowed[0];
   const Page = page.el;
 

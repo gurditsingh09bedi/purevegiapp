@@ -7,6 +7,15 @@ import FoodFilm from "../FoodFilm.jsx";
 import { reveal } from "../fx.js";
 import { openNow, useApp, useLoad } from "../state.jsx";
 
+// ["friday","saturday","sunday"] -> "Fri–Sun"
+function dayRange(days = []) {
+  const short = (x) => x.slice(0, 1).toUpperCase() + x.slice(1, 3);
+  if (!days.length) return "";
+  const idx = days.map((x) => DAYS.indexOf(x));
+  const consecutive = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
+  return days.length > 2 && consecutive ? `${short(days[0])}–${short(days.at(-1))}` : days.map(short).join(", ");
+}
+
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const t12 = (hhmm) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -110,7 +119,7 @@ export default function Home() {
       <div className="closed-wrap"><ClosedBanner /><BusyMeter /></div>
       <section className="facts" aria-label="Opening and delivery">
         <div className="fact"><b>{open === null ? "Opening hours" : open ? "Open now" : "Closed now"}</b><span>{todayText}</span></div>
-        {d?.enabled && <div className="fact"><b>Delivery {t12(d.hours[0].slice(0, 5))}–{t12(d.hours[1].slice(0, 5))}</b><span>Pick a 15-minute slot</span></div>}
+        {d?.enabled && <div className="fact"><b>Delivery {dayRange(d.days)}, {t12(d.hours[0].slice(0, 5))}–{t12(d.hours[1].slice(0, 5))}</b><span>At your door in about {d.minutes || 45} min</span></div>}
         {d && <div className="fact"><b>Free delivery within {d.free_radius_miles} miles</b><span>{money(d.fee_beyond_free_pence)} beyond that</span></div>}
         <div className="fact"><b>Collection</b><span>Ready when you arrive</span></div>
       </section>

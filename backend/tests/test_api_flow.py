@@ -1,4 +1,4 @@
-"""End-to-end API test: a pre-order at 1 pm for a 7 pm delivery slot, through to the review prompt."""
+"""End-to-end API tests: delivery as soon as possible (Fri-Sun 5-10pm), collection, till sales and table bills."""
 
 import typing
 from datetime import UTC, datetime, timedelta
@@ -10,7 +10,9 @@ pytest.importorskip("sqlalchemy")
 
 from fastapi.testclient import TestClient
 
-FROZEN = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)  # 1 pm in London (BST)
+FROZEN = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)  # Friday 1 pm in London (BST): open, not delivering yet
+EVENING = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)  # Friday 6 pm: delivering
+ADDRESS = {"line1": "1 Test St", "postcode": "B21 9AA", "lat": 52.5163, "lng": -1.9310}
 
 
 @pytest.fixture()
@@ -27,6 +29,8 @@ def client(tmp_path, monkeypatch):
 
     app.dependency_overrides[deps.now] = lambda: FROZEN
     with TestClient(app) as c:
+        # Table booking is switched off for now; its tests switch it back on.
+        c.patch("/admin/settings", headers=login(c, "owner@purevegi.co.uk", "owner-pass-123"), json={"bookings_enabled": True})
         yield c
     app.dependency_overrides.clear()
 
@@ -37,13 +41,20 @@ def plain_item(c):
                 if i["is_available"] and not any(g["min_choices"] for g in i["option_groups"]))
 
 
+def at_time(when):
+    from app import deps
+    from app.main import app
+
+    app.dependency_overrides[deps.now] = lambda: when
+
+
 def login(c, email, pw):
     r = c.post("/auth/login", json={"email": email, "password": pw})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
-def test_pre_order_to_review_prompt(client):
+def test_delivery_asap_to_review_prompt(client):
     c = client
     owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
     r = c.patch("/admin/settings", headers=owner,
@@ -54,56 +65,61 @@ def test_pre_order_to_review_prompt(client):
                                                         "password": "staff-pass-123", "role": role})
         assert r.status_code == 201, r.text
     chef, driver = login(c, "kitchen@purevegi.co.uk", "staff-pass-123"), login(c, "driver@purevegi.co.uk", "staff-pass-123")
-
     r = c.post("/auth/register", json={"name": "Aman", "email": "aman@purevegi.co.uk", "phone": "07700900001",
                                        "password": "customer-123"})
     me = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    body = {"type": "delivery", "items": [{"menu_item_id": plain_item(c), "quantity": 2}], "address": ADDRESS}
 
-    slots = c.get("/delivery/slots").json()
-    assert len(slots) == 20 and slots[0]["label"] == "5pm–5:15pm"
-    seven = next(s for s in slots if s["label"].startswith("7pm"))
+    # 1pm Friday: open for collection, but delivery only runs 5pm-10pm
+    r = c.post("/orders", headers=me, json=body)
+    assert r.status_code == 409 and "Fri-Sun, 5pm-10pm" in r.json()["detail"], r.text
+    info = c.get("/restaurant").json()["delivery"]
+    assert info["open_now"] is False and info["next_open"].startswith("2026-10-02T17:00") and info["minutes"] == 45
 
-    item_id = plain_item(c)
-    body = {"type": "delivery", "items": [{"menu_item_id": item_id, "quantity": 2}], "slot_start": seven["start"],
-            "address": {"line1": "1 Test St", "postcode": "B21 9AA", "lat": 52.5163, "lng": -1.9310}}
+    at_time(EVENING)
     r = c.post("/orders", headers=me, json=body)
     assert r.status_code == 201, r.text
     order = r.json()
-    assert order["status"] == "pending_payment" and order["delivery_fee_pence"] == 0
-
-    r = c.post(f"/orders/{order['id']}/dev-pay", headers=owner)
-    assert r.json()["status"] == "placed"
+    assert order["status"] == "pending_payment" and order["delivery_fee_pence"] == 0 and order["slot_start"] is None
+    paid = c.post(f"/orders/{order['id']}/dev-pay", headers=owner).json()
+    assert paid["status"] == "placed" and paid["payment_method"] == "online"
+    assert datetime.fromisoformat(paid["arrive_by"]).replace(tzinfo=UTC) == EVENING + timedelta(minutes=45)
 
     queue = c.get("/kitchen/queue", headers=chef).json()
-    assert queue[0]["order"]["id"] == order["id"] and queue[0]["pre_order"] is True
+    assert queue[0]["order"]["id"] == order["id"] and queue[0]["pre_order"] is False
 
     oid = order["id"]
     assert c.post(f"/kitchen/orders/{oid}/accept", headers=chef, json={"prep_minutes": 15}).json()["status"] == "accepted"
+    late = c.post(f"/kitchen/orders/{oid}/delay", headers=chef, json={"minutes": 10}).json()
+    assert datetime.fromisoformat(late["arrive_by"]).replace(tzinfo=UTC) == EVENING + timedelta(minutes=55)
     assert c.post(f"/kitchen/orders/{oid}/start", headers=chef).json()["status"] == "preparing"
     assert c.post(f"/kitchen/orders/{oid}/ready", headers=chef).json()["status"] == "ready"
     assert c.post(f"/driver/orders/{oid}/picked-up", headers=driver).json()["status"] == "out_for_delivery"
     done = c.post(f"/driver/orders/{oid}/delivered", headers=driver).json()
     assert [e["status"] for e in done["events"]] == [
-        "pending_payment", "placed", "accepted", "preparing", "ready", "out_for_delivery", "delivered"]
+        "pending_payment", "placed", "accepted", "accepted", "preparing", "ready", "out_for_delivery", "delivered"]
 
-    kinds = [n["kind"] for n in c.get("/auth/notifications", headers=me).json()]
-    assert "review_prompt" in kinds
+    notes = c.get("/auth/notifications", headers=me).json()
+    assert "review_prompt" in [n["kind"] for n in notes]
+    assert any(n["kind"] == "delay" for n in notes)
 
 
-def test_full_slot_is_first_come_first_served(client):
+def test_busy_night_adds_time_for_new_and_waiting_customers(client):
     c = client
     owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
-    c.patch("/admin/settings", headers=owner, json={"drivers_on_shift": 1})
-    seven = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
-    item_id = plain_item(c)
+    at_time(EVENING)
     body = {"type": "delivery", "customer_name": "A", "customer_phone": "07700900002",
-            "items": [{"menu_item_id": item_id, "quantity": 1}], "slot_start": seven["start"],
-            "address": {"line1": "x", "postcode": "B21", "lat": 52.51, "lng": -1.93}}
-    assert c.post("/orders", json=body).status_code == 201
-    r = c.post("/orders", json=body)
-    assert r.status_code == 409 and "fully booked" in r.json()["detail"]
-    booked = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
-    assert booked["status"] == "booked"
+            "items": [{"menu_item_id": plain_item(c), "quantity": 1}], "address": ADDRESS}
+    first = c.post("/orders", json=body).json()
+    c.post(f"/orders/{first['id']}/test-pay", headers={"X-Order-Token": first["view_token"]})
+    r = c.post("/kitchen/busy-time", headers=owner, json={"extra_minutes": 15, "tell_customers": True}).json()
+    assert r == {"busy_extra_minutes": 15, "delivery_minutes": 60, "customers_told": 1}
+    assert c.get("/restaurant").json()["delivery"]["minutes"] == 60
+    again = c.get(f"/orders/{first['id']}", headers={"X-Order-Token": first["view_token"]}).json()
+    assert datetime.fromisoformat(again["arrive_by"]).replace(tzinfo=UTC) == EVENING + timedelta(minutes=60)
+    second = c.post("/orders", json=body).json()
+    assert second["promised_minutes"] == 60
+    assert c.post("/kitchen/busy-time", headers=owner, json={"extra_minutes": 0}).json()["delivery_minutes"] == 45
 
 
 def test_beyond_two_miles_costs_two_pounds(client):
@@ -113,16 +129,73 @@ def test_beyond_two_miles_costs_two_pounds(client):
 
 def test_guest_orders_pays_in_test_mode_and_tracks_with_token(client):
     c = client
-    item_id = plain_item(c)
-    seven = next(s for s in c.get("/delivery/slots").json() if s["label"].startswith("7pm"))
+    at_time(EVENING)
     body = {"type": "delivery", "customer_name": "Guest", "customer_phone": "07700900003",
-            "items": [{"menu_item_id": item_id, "quantity": 1}], "slot_start": seven["start"],
-            "address": {"line1": "x", "postcode": "B21", "lat": 52.51, "lng": -1.93}}
+            "items": [{"menu_item_id": plain_item(c), "quantity": 1}], "address": ADDRESS}
     placed = c.post("/orders", json=body).json()
     token = {"X-Order-Token": placed["view_token"]}
     assert c.get(f"/orders/{placed['id']}").status_code == 404
     assert c.get(f"/orders/{placed['id']}", headers=token).json()["status"] == "pending_payment"
     assert c.post(f"/orders/{placed['id']}/test-pay", headers=token).json()["status"] == "placed"
+
+
+def test_till_sale_card_or_cash_goes_to_kitchen(client):
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    item = plain_item(c)
+    r = c.post("/till/orders", headers=owner, json={"items": [{"menu_item_id": item, "quantity": 2}],
+                                                    "service": "takeaway", "payment_method": "card"})
+    assert r.status_code == 201, r.text
+    sale = r.json()
+    assert sale["status"] == "placed" and sale["paid_at"] and sale["channel"] == "till" and sale["payment_method"] == "card"
+    assert any(t["order"]["id"] == sale["id"] for t in c.get("/kitchen/queue", headers=owner).json())
+    cash = {"items": [{"menu_item_id": item, "quantity": 1}], "service": "eat_in", "payment_method": "cash"}
+    assert c.post("/till/orders", headers=owner, json={**cash, "cash_given_pence": 1}).status_code == 400
+    assert c.post("/till/orders", headers=owner, json={**cash, "cash_given_pence": 5000}).json()["customer_name"] == "Eat in"
+    assert c.post("/till/orders", json=cash).status_code == 401  # staff only
+    report = c.get("/admin/reports/payments", headers=owner,
+                   params={"start": "2026-10-01T00:00:00Z", "end": "2026-10-03T00:00:00Z"}).json()
+    assert {r["method"] for r in report} == {"card", "cash"}
+
+
+def test_table_pays_online_or_at_the_till(client):
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    tables = c.get("/admin/tables", headers=owner).json()
+    qr1, qr2 = (t["qr_url"].split("/t/")[1] for t in tables[:2])
+    item = plain_item(c)
+    for qr in (qr1, qr2):
+        r = c.post("/orders", json={"type": "dine_in", "table_token": qr, "items": [{"menu_item_id": item, "quantity": 1}]})
+        assert r.status_code == 201, r.text
+    bill = c.get(f"/tables/qr/{qr1}/bill").json()
+    assert bill["due_pence"] > 0 and bill["paid"] is False
+    assert c.post(f"/tables/qr/{qr1}/pay").json()["dev_mode"] is True
+    assert c.post(f"/tables/qr/{qr1}/test-pay").json()["payment_method"] == "online"
+    assert c.get(f"/tables/qr/{qr1}/bill").status_code == 404  # tab closed
+
+    assert c.post(f"/tables/qr/{qr2}/pay-at-till").json()["pay_at_till"] is True
+    tabs = c.get("/till/tables", headers=owner).json()
+    assert tabs[0]["pay_at_till"] is True and tabs[0]["table_number"] == "2"
+    r = c.post(f"/tables/sessions/{tabs[0]['table_session_id']}/paid", headers=owner, json={"payment_method": "cash"})
+    assert r.status_code == 204
+    assert c.get("/till/tables", headers=owner).json() == []
+
+
+def test_sauces_up_to_two_on_wraps(client):
+    c = client
+    menu = c.get("/menu").json()
+    wrap = next(i for cat in menu if cat["name"] == "Wraps" for i in cat["items"])
+    sauces = next(g for g in wrap["option_groups"] if g["name"] == "Sauces (choose up to 2)")
+    assert sauces["max_choices"] == 2 and [o["name"] for o in sauces["options"]][:2] == ["Hot chilli", "Sweet chilli"]
+    bread = next(g for g in wrap["option_groups"] if g["name"] == "Wrap")["options"][0]["id"]
+    three = [o["id"] for o in sauces["options"][:3]]
+
+    def order(ids):
+        return c.post("/orders", json={"type": "collection", "customer_name": "T", "customer_phone": "07700900111",
+                                       "items": [{"menu_item_id": wrap["id"], "quantity": 1, "option_ids": [bread, *ids]}]})
+
+    assert order(three[:2]).status_code == 201
+    assert order(three).status_code == 400
 
 
 def test_table_qr_lookup(client):
@@ -331,47 +404,34 @@ def test_leaflet_menu_sizes_toppings_and_meal_upgrade(client):
     assert order(burger["id"], [meal, coke]).json()["subtotal_pence"] == 450 + 249
 
 
-def test_closed_at_night_order_ahead_only(client):
-    """2am: no 'as soon as possible' collection; a pick-up time from the list works; tomorrow's delivery slots open."""
-    from app import deps
-    from app.main import app
-
+def test_closed_at_night_no_orders(client):
+    """2am Saturday: closed, so neither collection nor delivery orders are taken."""
     c = client
-    night = datetime(2026, 10, 2, 1, 0, tzinfo=UTC)  # 2am in London
-    app.dependency_overrides[deps.now] = lambda: night
+    at_time(datetime(2026, 10, 3, 1, 0, tzinfo=UTC))  # Saturday 2am London
     info = c.get("/restaurant").json()
-    assert info["open_now"] is False and info["next_open"].startswith("2026-10-02T12:00")
+    assert info["open_now"] is False and info["next_open"].startswith("2026-10-03T12:00")
+    assert info["delivery"]["next_open"].startswith("2026-10-03T17:00")
     item = plain_item(c)
-    base = {"type": "collection", "customer_name": "T", "customer_phone": "07700900111",
-            "items": [{"menu_item_id": item, "quantity": 1}]}
-    r = c.post("/orders", json=base)
-    assert r.status_code == 409 and "collection time" in r.json()["detail"]
-    times = c.get("/collection/times").json()
-    assert times[0]["label"] == "12:15pm"
-    assert c.post("/orders", json={**base, "collect_at": "2026-10-02T03:00:00+01:00"}).status_code == 409  # not offered
-    r = c.post("/orders", json={**base, "collect_at": times[0]["start"]})
-    assert r.status_code == 201, r.text
-    got = datetime.fromisoformat(r.json()["slot_start"])
-    got = got if got.tzinfo else got.replace(tzinfo=UTC)  # SQLite hands back naive UTC
-    assert got == datetime.fromisoformat(times[0]["start"])
-    assert c.get("/delivery/slots", params={"day": "2026-10-03"}).status_code == 200  # tomorrow can be booked
+    r = c.post("/orders", json={"type": "collection", "customer_name": "T", "customer_phone": "07700900111",
+                                "items": [{"menu_item_id": item, "quantity": 1}]})
+    assert r.status_code == 409 and "closed" in r.json()["detail"]
+    r = c.post("/orders", json={"type": "delivery", "customer_name": "T", "customer_phone": "07700900111",
+                                "items": [{"menu_item_id": item, "quantity": 1}], "address": ADDRESS})
+    assert r.status_code == 409 and "Next delivery: Saturday at 5pm" in r.json()["detail"]
 
 
-def test_late_night_order_for_tomorrow_shows_in_kitchen(client):
-    """11pm: a delivery for tomorrow 5:15pm must appear on the kitchen screen straight away."""
-    from app import deps
-    from app.main import app
-
+def test_last_delivery_order_before_ten_shows_in_kitchen(client):
     c = client
     owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
-    app.dependency_overrides[deps.now] = lambda: datetime(2026, 10, 2, 22, 0, tzinfo=UTC)  # 11pm London
-    slot = next(s for s in c.get("/delivery/slots", params={"day": "2026-10-03"}).json() if s["status"] != "booked")
-    order = c.post("/orders", json={"type": "delivery", "customer_name": "Night", "customer_phone": "07700900222",
-                                    "items": [{"menu_item_id": plain_item(c), "quantity": 1}], "slot_start": slot["start"],
-                                    "address": {"line1": "x", "postcode": "B21", "lat": 52.51, "lng": -1.93}}).json()
+    at_time(datetime(2026, 10, 2, 20, 55, tzinfo=UTC))  # 9:55pm Friday: still delivering
+    order = c.post("/orders", json={"type": "delivery", "customer_name": "Late", "customer_phone": "07700900222",
+                                    "items": [{"menu_item_id": plain_item(c), "quantity": 1}], "address": ADDRESS}).json()
     assert c.post(f"/orders/{order['id']}/test-pay", headers={"X-Order-Token": order["view_token"]}).json()["status"] == "placed"
-    queue = c.get("/kitchen/queue", headers=owner).json()
-    assert any(t["order"]["id"] == order["id"] for t in queue)
+    assert any(t["order"]["id"] == order["id"] for t in c.get("/kitchen/queue", headers=owner).json())
+    at_time(datetime(2026, 10, 2, 21, 0, tzinfo=UTC))  # 10pm: delivery closed
+    r = c.post("/orders", json={"type": "delivery", "customer_name": "Too late", "customer_phone": "07700900222",
+                                "items": [{"menu_item_id": plain_item(c), "quantity": 1}], "address": ADDRESS})
+    assert r.status_code == 409
 
 
 def test_busy_meter_special_and_reviews(client):
