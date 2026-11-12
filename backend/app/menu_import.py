@@ -32,7 +32,12 @@ def build_item(category_id: int, sort: int, d: dict) -> models.MenuItem:
 
 
 def has_sample_menu(db) -> bool:
-    return bool(db.scalar(select(models.MenuItem).where(models.MenuItem.description == "Sample dish")))
+    """True only while the old sample dishes are still on the live menu. (Once the leaflet menu is
+    loaded they sit in the hidden "Old menu" category, and must not trigger another import.)"""
+    return bool(db.scalar(
+        select(models.MenuItem).join(models.Category)
+        .where(models.MenuItem.description == "Sample dish", models.Category.name != ARCHIVE)
+    ))
 
 
 def run(db) -> int:

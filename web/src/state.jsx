@@ -78,6 +78,20 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener("pv:native", register);
   }, [user]);
 
+  // A basket saved on this device can hold dishes that have since changed (menu updated, sold out,
+  // option removed). Drop those quietly on load, so checkout never fails with "not available".
+  useEffect(() => {
+    api("/menu", { quiet: true }).then((menu) => {
+      const items = new Map(menu.flatMap((c) => c.items).filter((i) => i.is_available).map((i) => [i.id, i]));
+      setCart((c) => c.filter((l) => {
+        const it = items.get(l.itemId);
+        if (!it) return false;
+        const opts = new Set(it.option_groups.flatMap((g) => g.options.filter((o) => o.is_available).map((o) => o.id)));
+        return l.optionIds.every((id) => opts.has(id));
+      }));
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     api("/restaurant").then(setRestaurant).catch(() => {});
     if (auth.token()) api("/auth/me").then(setUser).catch(() => auth.set(null));
