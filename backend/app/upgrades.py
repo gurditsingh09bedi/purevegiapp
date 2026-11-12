@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import time
 
+from pydantic import HttpUrl
 from sqlalchemy import select
 
 from . import models
@@ -44,8 +45,14 @@ def _delivery_every_day(db, s) -> None:
                         for d in WEEKDAYS}
 
 
+def _google_review_link(db, s) -> None:
+    """Nov 2026: Pure Vegi's Google review link, so customers are asked for a review after ordering."""
+    if not s.google_review_url:
+        s.google_review_url = HttpUrl("https://share.google/hsH0vOyjGgbTKB4ec")
+
+
 UPGRADES = [("sauces-2026-11", lambda db, s: _sauces(db)), ("service-2026-11", _nov_2026_service),
-            ("delivery-hours-2026-11", _delivery_every_day)]
+            ("delivery-hours-2026-11", _delivery_every_day), ("google-review-2026-11", _google_review_link)]
 
 
 def apply(db) -> list[str]:

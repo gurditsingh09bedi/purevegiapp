@@ -58,11 +58,13 @@ export default function Track({ id }) {
     return () => { clearInterval(poll); stop(); };
   }, [id, load]);
 
-  // Google review pop-up once the meal is done; asked of every customer, no reward (Google's rules).
+  // Google review pop-up a few seconds after the order is placed and paid (once per order).
+  // Asked of every customer with no reward, as Google's rules require.
   useEffect(() => {
-    if (!order || !restaurant?.google_review_url || !DONE.includes(order.status)) return;
+    const paid = order && !["pending_payment", "rejected", "cancelled"].includes(order.status);
+    if (!paid || !restaurant?.google_review_url) return;
     if (store.get(`pv_review_asked_${order.id}`, false)) return;
-    const t = setTimeout(() => setShowReview(true), 1500);
+    const t = setTimeout(() => setShowReview(true), DONE.includes(order.status) ? 1500 : 4000);
     return () => clearTimeout(t);
   }, [order, restaurant]);
 
@@ -136,8 +138,9 @@ export default function Track({ id }) {
         <Modal onClose={closeReview} label="Leave a review">
           <div className="review-pop">
             <img src="/logo.jpg" alt="" width="72" height="72" />
-            <h2>Enjoyed your meal?</h2>
-            <p>A quick Google review really helps a local restaurant. Thank you!</p>
+            <h2>{DONE.includes(order.status) ? "Enjoyed your meal?" : "Thank you for your order!"}</h2>
+            <div className="review-stars" aria-hidden="true">★★★★★</div>
+            <p>Please share your review on Google. It really helps a local restaurant. Thank you!</p>
             <a className="btn primary wide big" href={restaurant.google_review_url} target="_blank" rel="noreferrer" onClick={closeReview}>Leave a Google review</a>
             <button className="btn ghost wide" onClick={closeReview}>Not now</button>
           </div>
