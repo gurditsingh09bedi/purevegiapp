@@ -51,8 +51,19 @@ def _google_review_link(db, s) -> None:
         s.google_review_url = HttpUrl("https://share.google/hsH0vOyjGgbTKB4ec")
 
 
+REVIEW_FORM = ("https://www.google.com/search?q=Pure+Vegi&kgmid=/g/11b6xb_9h5"
+               "#lrd=0x4870bd25ee4fac5d:0xa76dda2336799802,3,,,,")
+
+
+def _google_review_form(db, s) -> None:
+    """Nov 2026: open Google's "write a review" box directly (the ,3 at the end) instead of the Maps page."""
+    if not s.google_review_url or "share.google" in str(s.google_review_url):
+        s.google_review_url = HttpUrl(REVIEW_FORM)
+
+
 UPGRADES = [("sauces-2026-11", lambda db, s: _sauces(db)), ("service-2026-11", _nov_2026_service),
-            ("delivery-hours-2026-11", _delivery_every_day), ("google-review-2026-11", _google_review_link)]
+            ("delivery-hours-2026-11", _delivery_every_day), ("google-review-2026-11", _google_review_link),
+            ("google-review-form-2026-11", _google_review_form)]
 
 
 def apply(db) -> list[str]:
