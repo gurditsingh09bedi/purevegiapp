@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, myOrderTokens, orderHeaders, orderSocket, store } from "../api.js";
-import { Modal, NotifyCard } from "../components.jsx";
+import { NotifyCard } from "../components.jsx";
 import { confetti } from "../fx.js";
 import { clock, money } from "../format.js";
 import { Link, useApp } from "../state.jsx";
@@ -134,18 +134,43 @@ export default function Track({ id }) {
       </section>
 
       {order.type === "dine_in" && !stopped && table && <Link to={`/t/${table.token}`} className="btn ghost">Order more for the table</Link>}
-      {showReview && (
-        <Modal onClose={closeReview} label="Leave a review">
-          <div className="review-pop">
-            <img src="/logo.jpg" alt="" width="72" height="72" />
-            <h2>{DONE.includes(order.status) ? "Enjoyed your meal?" : "Thank you for your order!"}</h2>
-            <div className="review-stars" aria-hidden="true">★★★★★</div>
-            <p>Please share your review on Google. It really helps a local restaurant. Thank you!</p>
-            <a className="btn primary wide big" href={restaurant.google_review_url} target="_blank" rel="noreferrer" onClick={closeReview}>Leave a Google review</a>
-            <button className="btn ghost wide" onClick={closeReview}>Not now</button>
-          </div>
-        </Modal>
-      )}
+      {showReview && <ReviewPop url={restaurant.google_review_url} done={DONE.includes(order.status)} onClose={closeReview} />}
+    </div>
+  );
+}
+
+// The Google review ask: a happy little animation that makes people want to write a few kind words.
+// Every customer is asked the same way and every star goes to Google (no reward, no filtering).
+function ReviewPop({ url, done, onClose }) {
+  const [lit, setLit] = useState(0);
+  useEffect(() => {
+    let n = 0;
+    const t = setInterval(() => { n += 1; setLit(n); if (n >= 5) clearInterval(t); }, 260);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [onClose]);
+  const go = () => { confetti({ count: 90, y: 0.4 }); setTimeout(() => { window.open(url, "_blank", "noopener"); onClose(); }, 450); };
+
+  return (
+    <div className="modal-back review-back">
+      <div className="modal review-pop" role="dialog" aria-modal="true" aria-label="Leave a Google review">
+        <div className="rp-hearts" aria-hidden="true">{["💚", "🧡", "💚", "🧡", "💚"].map((h, i) => <span key={i} style={{ "--i": i }}>{h}</span>)}</div>
+        <div className="rp-buddy" aria-hidden="true"><img src="/loading-boy.svg" alt="" /></div>
+        <h2>{done ? "Enjoyed your meal?" : "Thank you for your order!"}</h2>
+        <p className="rp-sub">Your kind words help our little kitchen on Soho Road grow. It only takes 30 seconds 🙏</p>
+        <div className="rp-stars" role="group" aria-label="Rate us on Google">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button key={n} className={`rp-star ${n <= lit ? "on" : ""}`} style={{ "--i": n }} onClick={go} aria-label={`${n} star${n > 1 ? "s" : ""}: write a Google review`}>★</button>
+          ))}
+        </div>
+        <button className="btn primary wide big rp-cta" onClick={go}>✍️ Write a Google review</button>
+        <button className="rp-later" onClick={onClose}>Maybe later</button>
+      </div>
     </div>
   );
 }
