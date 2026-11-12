@@ -72,7 +72,6 @@ function play(v) {
 }
 
 export default function FoodFilm() {
-  const canBook = useApp().restaurant?.bookings_enabled === true;
   const [calm] = useState(calmMode);
   return (
     <>
@@ -86,6 +85,7 @@ export default function FoodFilm() {
 // it plays sharp, near its real size, in a card. Behind it an "ambient" glow (a tiny canvas
 // copy of the same video, heavily blurred) fills the hero, so the colours move with the food.
 function Hero({ calm }) {
+  const canBook = useApp().restaurant?.bookings_enabled === true;
   const video = useRef(null);
   const glow = useRef(null);
   const [paused, setPaused] = useState(calm);

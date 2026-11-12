@@ -279,3 +279,6 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .till-amount { font-size: 2.4rem; font-weight: 800; margin: 4px 0 10px; }
 .till-change { font-size: 1.4rem; font-weight: 800; color: #1f7a45; }
 .till-change.short { color: #b3261e; }
+.till .seg { display: grid; grid-template-columns: 1fr 1fr; background: #ece5d3; border-radius: 999px; padding: 4px; gap: 4px; }
+.till .seg button { font: inherit; font-weight: 800; border: 0; background: transparent; color: var(--green, #023e32); padding: 10px; border-radius: 999px; cursor: pointer; }
+.till .seg button.on { background: var(--green, #023e32); color: #fff; }

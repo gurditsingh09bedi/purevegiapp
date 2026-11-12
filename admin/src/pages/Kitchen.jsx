@@ -284,7 +284,7 @@ function Ticket({ t, now, choices, delays, act }) {
     o.type === "delivery" && o.slot_start ? `${dayWord(o.slot_start)}Slot ${clock(o.slot_start)}–${clock(o.slot_end)}`
     : o.type === "delivery" ? `Deliver by ${clock(o.arrive_by)}${o.address?.postcode ? ` · ${o.address.postcode}` : ""}`
     : o.type === "dine_in" ? `Table ${o.table_number || "?"}`
-    : till ? `${o.service === "eat_in" ? "Eat in" : "Takeaway"} · ${o.customer_name}`
+    : till ? [o.service === "eat_in" ? "Eat in" : "Takeaway", ...(["Eat in", "Takeaway", ""].includes(o.customer_name) ? [] : [o.customer_name])].join(" · ")
     : o.customer_name || "Collection";
   const waited = minutesFrom(o.created_at, now);
 

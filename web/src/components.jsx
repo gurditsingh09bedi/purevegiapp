@@ -172,7 +172,8 @@ export function ItemModal({ item, onClose }) {
           </legend>
           {g.options.map((o) => (
             <label key={o.id} className={`opt ${o.is_available ? "" : "off"}`}>
-              <input type={g.max_choices === 1 ? "radio" : "checkbox"} name={`g${g.id}`} disabled={!o.is_available}
+              <input type={g.max_choices === 1 ? "radio" : "checkbox"} name={`g${g.id}`}
+                disabled={!o.is_available || (g.max_choices > 1 && !(chosen[g.id] || []).includes(o.id) && (chosen[g.id] || []).length >= g.max_choices)}
                 checked={(chosen[g.id] || []).includes(o.id)} onChange={() => toggle(g, o)} />
               <span>{o.name}</span>
               <span className="muted">{o.price_pence ? `+${money(o.price_pence)}` : ""}</span>

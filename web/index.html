@@ -8,12 +8,12 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta property="og:title" content="Pure Vegi · Thinking vegi? Think Pure Vegi." />
-    <meta property="og:description" content="Vegetarian pizza, burgers, wraps, noodles and stir fry on Soho Road, Handsworth. Order online or book a table." />
+    <meta property="og:description" content="Vegetarian pizza, burgers, wraps, noodles and stir fry on Soho Road, Handsworth. Delivery Friday to Sunday, collection and table ordering." />
     <meta property="og:image" content="/og-image.jpg" />
     <meta property="og:type" content="website" />
     <link rel="preload" as="image" href="/media/hero.jpg" />
     <title>Pure Vegi · Order online · Handsworth, Birmingham</title>
-    <meta name="description" content="Order vegetarian and vegan burgers, wraps, noodles and stir fry from Pure Vegi, 324 Soho Rd, Handsworth. Delivery, collection and table booking." />
+    <meta name="description" content="Order vegetarian and vegan burgers, wraps, noodles and stir fry from Pure Vegi, 324 Soho Rd, Handsworth. Delivery Friday to Sunday, 5pm to 10pm, collection and table ordering." />
     <link rel="icon" href="/logo.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700;800&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
@@ -68,6 +68,23 @@
       @keyframes pv-rise { from { opacity: 0; transform: translateY(12px); } }
       @media (prefers-reduced-motion: reduce) { .pv-splash-heart img, .pv-splash-heart i, .pv-splash-word { animation: none; } }
     </style>
+    <script>
+      // Safety net: if the site hasn't appeared after 12 seconds (server asleep, or a script error),
+      // say so and offer a retry instead of spinning forever. Any script error is shown too.
+      (function () {
+        var errs = [];
+        window.addEventListener("error", function (e) { errs.push(e.message || String(e)); });
+        window.addEventListener("unhandledrejection", function (e) { errs.push(String((e.reason && e.reason.message) || e.reason)); });
+        setTimeout(function () {
+          var boot = document.getElementById("boot-loader");
+          if (!boot || boot.classList.contains("gone")) return;
+          var p = boot.querySelector("p") || boot.appendChild(document.createElement("p"));
+          p.innerHTML = "This is taking longer than usual. <button onclick=\"location.reload()\" style=\"margin-left:8px;padding:8px 14px;border-radius:999px;border:0;background:#023e32;color:#fff;font:inherit;cursor:pointer\">Try again</button>"
+            + (errs.length ? "<br><small style=\"font-weight:400;opacity:.7\">" + errs.slice(0, 2).join(" · ").replace(/</g, "&lt;") + "</small>" : "");
+          if (document.getElementById("root").children.length) boot.classList.add("gone"); // the page did load: just uncover it
+        }, 12000);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
