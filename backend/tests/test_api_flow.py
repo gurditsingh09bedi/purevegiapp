@@ -72,7 +72,7 @@ def test_delivery_asap_to_review_prompt(client):
 
     # 1pm Friday: open for collection, but delivery only runs 5pm-10pm
     r = c.post("/orders", headers=me, json=body)
-    assert r.status_code == 409 and "Fri-Sun, 5pm-10pm" in r.json()["detail"], r.text
+    assert r.status_code == 409 and "Fri-Sun 5pm-10pm" in r.json()["detail"], r.text
     info = c.get("/restaurant").json()["delivery"]
     assert info["open_now"] is False and info["next_open"].startswith("2026-10-02T17:00") and info["minutes"] == 45
 
@@ -417,7 +417,7 @@ def test_closed_at_night_no_orders(client):
     assert r.status_code == 409 and "closed" in r.json()["detail"]
     r = c.post("/orders", json={"type": "delivery", "customer_name": "T", "customer_phone": "07700900111",
                                 "items": [{"menu_item_id": item, "quantity": 1}], "address": ADDRESS})
-    assert r.status_code == 409 and "Next delivery: Saturday at 5pm" in r.json()["detail"]
+    assert r.status_code == 409 and "Next delivery: today at 5pm" in r.json()["detail"]
 
 
 def test_last_delivery_order_before_ten_shows_in_kitchen(client):

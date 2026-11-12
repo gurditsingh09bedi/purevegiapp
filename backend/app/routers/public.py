@@ -48,6 +48,11 @@ def _special(db: Session, s: RestaurantSettings, at) -> dict | None:
     return {"item_id": item.id, "note": s.special_note}
 
 
+def _today_delivery_hours(s: RestaurantSettings, at) -> list[str] | None:
+    h = s.delivery_hours[WEEKDAYS[at.astimezone(ZoneInfo(s.timezone)).weekday()]]
+    return None if h.closed else [h.opens.isoformat(), h.closes.isoformat()]
+
+
 @router.get("/restaurant/busy")
 def busy(db: Session = Depends(get_db), s: RestaurantSettings = Depends(settings), at=Depends(now)):
     """The busy meter: how busy the kitchen is now and roughly how long a new order takes."""
@@ -72,8 +77,10 @@ def restaurant(db: Session = Depends(get_db), s: RestaurantSettings = Depends(se
         "opening_hours": {d: h.model_dump(mode="json") for d, h in s.opening_hours.items()},
         "delivery": {
             "enabled": s.delivery_enabled,
-            "hours": [s.delivery_start.isoformat(), s.delivery_end.isoformat()],
-            "days": [d for d in WEEKDAYS if d in s.delivery_days],
+            "hours": _today_delivery_hours(s, at),
+            "days": [d for d in WEEKDAYS if not s.delivery_hours[d].closed],
+            "week": {d: h.model_dump(mode="json") for d, h in s.delivery_hours.items()},
+            "summary": slots.delivery_summary(s),
             "open_now": slots.delivery_open(s, at),
             "next_open": nxt_delivery.isoformat() if nxt_delivery else None,
             "minutes": svc.quoted_delivery_minutes(s),

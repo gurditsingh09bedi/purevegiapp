@@ -11,6 +11,7 @@ from datetime import time
 from sqlalchemy import select
 
 from . import models
+from .domain.settings import WEEKDAYS, DayHours
 from .menu_data import SAUCE_GROUP, SAUCES, wants_sauce
 from .services.settings_store import get_settings, save_settings
 
@@ -32,14 +33,19 @@ def _sauces(db) -> None:
 
 
 def _nov_2026_service(db, s) -> None:
-    """Nov 2026: delivery as soon as possible (about 45 min), Friday-Sunday 5pm-10pm; no table booking."""
-    s.delivery_days = ["friday", "saturday", "sunday"]
-    s.delivery_start, s.delivery_end = time(17), time(22)
+    """Nov 2026: delivery as soon as possible (about 45 min); no table booking."""
     s.delivery_minutes = 45
     s.bookings_enabled = False
 
 
-UPGRADES = [("sauces-2026-11", lambda db, s: _sauces(db)), ("service-2026-11", _nov_2026_service)]
+def _delivery_every_day(db, s) -> None:
+    """Nov 2026: delivery every day, Monday-Thursday 6pm-10pm, Friday-Sunday 5pm-10pm."""
+    s.delivery_hours = {d: DayHours(opens=time(17 if d in ("friday", "saturday", "sunday") else 18), closes=time(22))
+                        for d in WEEKDAYS}
+
+
+UPGRADES = [("sauces-2026-11", lambda db, s: _sauces(db)), ("service-2026-11", _nov_2026_service),
+            ("delivery-hours-2026-11", _delivery_every_day)]
 
 
 def apply(db) -> list[str]:

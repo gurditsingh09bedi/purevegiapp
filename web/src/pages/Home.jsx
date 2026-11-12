@@ -119,7 +119,7 @@ export default function Home() {
       <div className="closed-wrap"><ClosedBanner /><BusyMeter /></div>
       <section className="facts" aria-label="Opening and delivery">
         <div className="fact"><b>{open === null ? "Opening hours" : open ? "Open now" : "Closed now"}</b><span>{todayText}</span></div>
-        {d?.enabled && <div className="fact"><b>Delivery {dayRange(d.days)}, {t12(d.hours[0].slice(0, 5))}–{t12(d.hours[1].slice(0, 5))}</b><span>At your door in about {d.minutes || 45} min</span></div>}
+        {d?.enabled && <div className="fact"><b>Delivery {d.hours ? `today ${t12(d.hours[0].slice(0, 5))}–${t12(d.hours[1].slice(0, 5))}` : dayRange(d.days)}</b><span>{d.summary ? `${d.summary} · ` : ""}within about {d.minutes || 45} min</span></div>}
         {d && <div className="fact"><b>Free delivery within {d.free_radius_miles} miles</b><span>{money(d.fee_beyond_free_pence)} beyond that</span></div>}
         <div className="fact"><b>Collection</b><span>Ready when you arrive</span></div>
       </section>

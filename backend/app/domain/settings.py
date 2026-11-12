@@ -28,6 +28,12 @@ class DayHours(BaseModel):
         return self
 
 
+def _default_delivery_week() -> dict[str, DayHours]:
+    # Agreed Nov 2026: Monday-Thursday 6pm-10pm, Friday-Sunday 5pm-10pm.
+    return {day: DayHours(opens=time(17 if day in ("friday", "saturday", "sunday") else 18), closes=time(22))
+            for day in WEEKDAYS}
+
+
 def _default_week() -> dict[str, DayHours]:
     # Agreed: every day 12:00 pm - 10:30 pm.
     return {day: DayHours() for day in WEEKDAYS}
@@ -54,11 +60,11 @@ class RestaurantSettings(BaseModel):
     opening_hours: dict[str, DayHours] = Field(default_factory=_default_week)
 
     # --- Delivery -----------------------------------------------------------
-    # Delivery runs on these days between delivery_start and delivery_end (agreed: Fri-Sun, 5pm-10pm).
+    # Delivery hours per weekday (delivery_hours; a day can be marked closed). Mon-Thu 6-10pm, Fri-Sun 5-10pm.
     # Orders are "as soon as possible": the customer is told about delivery_minutes (45), plus
     # busy_extra_minutes when the kitchen turns up the time on a busy night.
     delivery_enabled: bool = True
-    delivery_days: list[str] = Field(default_factory=lambda: ["friday", "saturday", "sunday"])
+    delivery_hours: dict[str, DayHours] = Field(default_factory=_default_delivery_week)
     delivery_minutes: int = Field(45, ge=10, le=180)
     busy_extra_minutes: int = Field(0, ge=0, le=180)
     delay_choices: list[int] = Field(default_factory=lambda: [5, 10, 15, 20, 30])
@@ -120,9 +126,9 @@ class RestaurantSettings(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> RestaurantSettings:
-        unknown = set(self.delivery_days) - set(WEEKDAYS)
-        if unknown:
-            raise ValueError(f"not a weekday: {', '.join(sorted(unknown))}")
+        missing_delivery = set(WEEKDAYS) - set(self.delivery_hours)
+        if missing_delivery:
+            raise ValueError(f"delivery hours missing for: {', '.join(sorted(missing_delivery))}")
         if self.delivery_start >= self.delivery_end:
             raise ValueError("delivery start must be before delivery end")
         if self.ticket_amber_minutes >= self.ticket_red_minutes:

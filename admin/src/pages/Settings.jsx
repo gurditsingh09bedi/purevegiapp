@@ -92,18 +92,24 @@ function SettingsForm({ initial, onSaved }) {
         <section className="card">
           <h2>Delivery</h2>
           <Toggle checked={s.delivery_enabled} onChange={set("delivery_enabled")} label="Take delivery orders" />
-          <fieldset className="allergens">
-            <legend>Delivery days</legend>
-            {DAYS.map((d) => (
-              <label key={d} className="chip-check cap">
-                <input type="checkbox" checked={(s.delivery_days || []).includes(d)}
-                  onChange={(e) => set("delivery_days")(e.target.checked ? DAYS.filter((x) => x === d || (s.delivery_days || []).includes(x)) : (s.delivery_days || []).filter((x) => x !== d))} /> {d}
-              </label>
-            ))}
-          </fieldset>
+          <table className="table">
+            <thead><tr><th>Delivery</th><th>From</th><th>Last orders</th><th>No delivery</th></tr></thead>
+            <tbody>
+              {DAYS.map((d) => {
+                const h = (s.delivery_hours || {})[d] || { opens: "18:00", closes: "22:00", closed: false };
+                const setD = (k, v) => setS((x) => ({ ...x, delivery_hours: { ...x.delivery_hours, [d]: { ...h, [k]: v } } }));
+                return (
+                  <tr key={d}>
+                    <td className="cap">{d}</td>
+                    <td><input type="time" value={hhmm(h.opens)} disabled={h.closed} onChange={(e) => setD("opens", e.target.value)} aria-label={`${d} delivery from`} /></td>
+                    <td><input type="time" value={hhmm(h.closes)} disabled={h.closed} onChange={(e) => setD("closes", e.target.value)} aria-label={`${d} last delivery orders`} /></td>
+                    <td><input type="checkbox" checked={h.closed} onChange={(e) => setD("closed", e.target.checked)} aria-label={`${d} no delivery`} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
           <div className="grid2">
-            <Field label="Deliveries from"><input type="time" value={hhmm(s.delivery_start)} onChange={(e) => set("delivery_start")(e.target.value)} /></Field>
-            <Field label="Last orders at"><input type="time" value={hhmm(s.delivery_end)} onChange={(e) => set("delivery_end")(e.target.value)} /></Field>
             <Field label="Delivered within (minutes)" hint="What customers are told, e.g. 45"><input type="number" min="10" max="180" value={s.delivery_minutes} onChange={num("delivery_minutes")} /></Field>
             <Field label="Busy-night extra now (minutes)" hint="The kitchen screen's +5 / +10 buttons change this"><input type="number" min="0" max="180" value={s.busy_extra_minutes} onChange={num("busy_extra_minutes")} /></Field>
             <Field label="'Busy' buttons on the kitchen screen" hint="Comma separated, e.g. 5, 10, 15, 20, 30">

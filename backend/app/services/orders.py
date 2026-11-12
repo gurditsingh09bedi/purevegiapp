@@ -243,21 +243,18 @@ def quoted_delivery_minutes(settings: RestaurantSettings) -> int:
 
 
 def delivery_hours_text(settings: RestaurantSettings, now: datetime) -> str:
-    days = [d for d in WEEKDAYS if d in settings.delivery_days]
-    span = f"{days[0][:3].title()}-{days[-1][:3].title()}" if days == list(WEEKDAYS[WEEKDAYS.index(days[0]):][:len(days)]) \
-        else ", ".join(d[:3].title() for d in days)
-    hours = f"{_clock_text(settings.delivery_start)}-{_clock_text(settings.delivery_end)}"
+    """e.g. "We deliver Mon-Thu 6pm-10pm, Fri-Sun 5pm-10pm. Next delivery: today at 6pm." """
+    summary = slots.delivery_summary(settings)
+    if not summary:
+        return "Delivery is switched off."
     nxt = slots.next_delivery_open(settings, now)
     when = ""
-    if nxt is not None:
+    if nxt is not None and nxt != now:
         local = nxt.astimezone(ZoneInfo(settings.timezone))
-        when = f" Next delivery: {local.strftime('%A')} at {_clock_text(local.time())}."
-    return f"We deliver {span}, {hours}.{when}" if days else "Delivery is switched off."
-
-
-def _clock_text(t) -> str:
-    h = t.hour % 12 or 12
-    return f"{h}{':' + format(t.minute, '02d') if t.minute else ''}{'am' if t.hour < 12 else 'pm'}"
+        today = now.astimezone(ZoneInfo(settings.timezone)).date()
+        day = "today" if local.date() == today else local.strftime("%A")
+        when = f" Next delivery: {day} at {slots.clock_text(local.time())}."
+    return f"We deliver {summary}.{when}"
 
 
 def arrive_by(order: Order, settings: RestaurantSettings) -> datetime | None:

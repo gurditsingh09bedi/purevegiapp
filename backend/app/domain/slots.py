@@ -179,27 +179,56 @@ def check_slot(
 
 
 def delivery_open(settings: RestaurantSettings, now: datetime) -> bool:
-    """True while we deliver: one of the delivery days, between delivery_start and delivery_end."""
+    """True while we deliver: inside that weekday's delivery hours (e.g. Mon-Thu 6-10pm, Fri-Sun 5-10pm)."""
     if not settings.delivery_enabled:
         return False
     local = now.astimezone(ZoneInfo(settings.timezone))
-    return (WEEKDAYS[local.weekday()] in settings.delivery_days
-            and settings.delivery_start <= local.time() < settings.delivery_end)
+    h = settings.delivery_hours[WEEKDAYS[local.weekday()]]
+    return not h.closed and h.opens <= local.time() < h.closes
 
 
 def next_delivery_open(settings: RestaurantSettings, now: datetime) -> datetime | None:
-    """When delivery next opens (``now`` while open). None if delivery is off or has no days."""
+    """When delivery next opens (``now`` while open). None if delivery is off or every day is closed."""
     if delivery_open(settings, now):
         return now
-    if not settings.delivery_enabled or not settings.delivery_days:
+    if not settings.delivery_enabled:
         return None
     tz = ZoneInfo(settings.timezone)
     local = now.astimezone(tz)
     for i in range(8):
         day = local.date() + timedelta(days=i)
-        if WEEKDAYS[day.weekday()] not in settings.delivery_days:
+        h = settings.delivery_hours[WEEKDAYS[day.weekday()]]
+        if h.closed:
             continue
-        start = datetime.combine(day, settings.delivery_start, tz)
+        start = datetime.combine(day, h.opens, tz)
         if start > local:
             return start
     return None
+
+
+def clock_text(t) -> str:
+    h = t.hour % 12 or 12
+    return f"{h}{':' + format(t.minute, '02d') if t.minute else ''}{'am' if t.hour < 12 else 'pm'}"
+
+
+def delivery_summary(settings: RestaurantSettings) -> str:
+    """Delivery hours grouped by runs of days with the same times: "Mon-Thu 6pm-10pm, Fri-Sun 5pm-10pm"."""
+    if not settings.delivery_enabled:
+        return ""
+    runs: list[tuple[list[str], str]] = []
+    for d in WEEKDAYS:
+        h = settings.delivery_hours[d]
+        label = None if h.closed else f"{clock_text(h.opens)}-{clock_text(h.closes)}"
+        if runs and runs[-1][1] == label:
+            runs[-1][0].append(d)
+        else:
+            runs.append(([d], label))
+    parts = []
+    for days, label in runs:
+        if label is None:
+            continue
+        name = days[0][:3].title() if len(days) == 1 else f"{days[0][:3].title()}-{days[-1][:3].title()}"
+        parts.append(f"{'every day' if len(days) == 7 else name} {label}")
+    return ", ".join(parts)
+
+
