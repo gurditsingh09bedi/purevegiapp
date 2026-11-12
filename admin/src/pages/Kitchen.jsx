@@ -173,7 +173,6 @@ export default function Kitchen() {
     if (r) setInfo((i) => ({ ...i, online_orders_paused: paused }));
   }
 
-  const choices = info?.prep_minute_choices || [10, 15, 20, 30];
   const delays = info?.delay_choices || [5, 10, 15, 20, 30];
   const extra = meter?.busy_extra_minutes || 0;
   const baseMins = (meter?.delivery_minutes || 45) - (meter?.busy_extra_minutes || 0);
@@ -245,7 +244,7 @@ export default function Kitchen() {
                 <h2>{col.title} <span className="count">{list.length}</span></h2>
                 {list.length === 0 && <p className="muted empty">Nothing here</p>}
                 {list.map((t) => (
-                  <Ticket key={t.order.id} t={t} now={now} choices={choices} delays={delays} act={act} deliveryMins={baseMins + extra} />
+                  <Ticket key={t.order.id} t={t} now={now} delays={delays} act={act} deliveryMins={baseMins + extra} prepMins={info?.default_prep_minutes || 15} />
                 ))}
               </section>
             );
@@ -256,7 +255,7 @@ export default function Kitchen() {
   );
 }
 
-function Ticket({ t, now, choices, delays, act, deliveryMins }) {
+function Ticket({ t, now, delays, act, deliveryMins, prepMins }) {
   const o = t.order;
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
@@ -294,30 +293,24 @@ function Ticket({ t, now, choices, delays, act, deliveryMins }) {
       {o.notes && <p className="note">Order note: “{o.notes}”</p>}
 
       <div className="actions">
-        {o.status === "placed" && !rejecting && o.type === "delivery" && (
-          <>
-            <button className="btn primary" onClick={() => act(`/kitchen/orders/${id}/accept`, {}, `#${id} accepted · customer told ${o.promised_minutes || deliveryMins} min`)}>
-              Accept · {o.promised_minutes || deliveryMins} min
-            </button>
-            <span className="muted small-label">Need more time?</span>
-            {delays.map((m) => (
-              <button key={m} className="btn ghost" onClick={() => act(`/kitchen/orders/${id}/accept`, { extra_minutes: m },
-                `#${id} accepted · customer told ${(o.promised_minutes || deliveryMins) + m} min`)}>+{m}</button>
-            ))}
-            <button className="btn ghost" onClick={() => setRejecting(true)}>Reject</button>
-          </>
-        )}
-        {o.status === "placed" && !rejecting && o.type !== "delivery" && (
-          <>
-            <span className="muted small-label">Accept · ready in</span>
-            {choices.map((m) => (
-              <button key={m} className="btn primary" onClick={() => act(`/kitchen/orders/${id}/accept`, { prep_minutes: m }, `#${id} accepted`)}>
-                {m} min
+        {o.status === "placed" && !rejecting && (() => {
+          // Every order: one tap to accept, or accept with more time (+5 ... +30) and the customer is told.
+          const base = o.type === "delivery" ? (o.promised_minutes || deliveryMins) : prepMins;
+          const what = o.type === "delivery" ? "arrives in" : "ready in";
+          return (
+            <>
+              <button className="btn primary" onClick={() => act(`/kitchen/orders/${id}/accept`, {}, `#${id} accepted · ${what} ${base} min`)}>
+                Accept · {base} min
               </button>
-            ))}
-            <button className="btn ghost" onClick={() => setRejecting(true)}>Reject</button>
-          </>
-        )}
+              <span className="muted small-label">Need more time?</span>
+              {delays.map((m) => (
+                <button key={m} className="btn ghost" onClick={() => act(`/kitchen/orders/${id}/accept`, { extra_minutes: m },
+                  `#${id} accepted · ${what} ${base + m} min${till ? "" : ", customer told"}`)}>+{m}</button>
+              ))}
+              <button className="btn ghost" onClick={() => setRejecting(true)}>Reject</button>
+            </>
+          );
+        })()}
         {rejecting && (
           <form className="reject" onSubmit={(e) => { e.preventDefault(); if (reason.trim()) act(`/kitchen/orders/${id}/reject`, { reason }, `#${id} rejected, customer refunded`); }}>
             <input autoFocus placeholder="Reason, e.g. item sold out" value={reason} onChange={(e) => setReason(e.target.value)} />
