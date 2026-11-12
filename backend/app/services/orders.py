@@ -192,6 +192,9 @@ def create_order(
         push_token=data.push_token,
         customer_email=data.customer_email or None,
         tip_pence=data.tip_pence,
+        delivery_fee_pence=0,
+        discount_pence=0,
+        extra_minutes=0,
         items=lines,
     )
 
@@ -305,7 +308,7 @@ def create_till_order(db: Session, outbox: Outbox, data, actor: User, settings: 
         payment_method=data.payment_method, customer_name=data.customer_name.strip() or
         ("Eat in" if data.service == "eat_in" else "Takeaway"),
         notes=data.notes, items=lines, subtotal_pence=subtotal, discount_pence=discount,
-        total_pence=subtotal - discount, paid_at=now,
+        total_pence=subtotal - discount, paid_at=now, delivery_fee_pence=0, tip_pence=0, extra_minutes=0,
     )
     if data.payment_method == "cash" and data.cash_given_pence is not None and data.cash_given_pence < order.total_pence:
         raise OrderError("the cash given is less than the total")
@@ -365,7 +368,8 @@ def delay(db, outbox, order: Order, minutes: int, settings, now, actor: User | N
     order.extra_minutes += minutes
     new_time = arrive_by(order, settings) or ready_time(order, settings)
     _record(db, order, order.status, actor, now, note=f"+{minutes} min")
-    notify.queue(db, order, order_flow.delay_message(new_time.astimezone(ZoneInfo(settings.timezone)), minutes), kind="delay")
+    notify.queue(db, order, order_flow.delay_message(new_time.astimezone(ZoneInfo(settings.timezone)), minutes), kind="delay",
+                 send_at=now)
     _broadcast(outbox, order, settings)
     return order
 
