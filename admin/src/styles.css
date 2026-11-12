@@ -298,3 +298,17 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 }
 .till-code input { font-size: 1.3rem; letter-spacing: .2em; flex: 1; }
 .till-waiting { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.key { min-height: 56px; font-family: inherit; font-weight: 800; font-size: 1.5rem; border: 1px solid var(--line); background: #fff; border-radius: 14px; cursor: pointer; touch-action: manipulation; }
+.key:active { transform: scale(.97); background: #f1ece0; }
+.key-fn { background: #f6f1e4; font-size: 1.1rem; }
+.key-done { grid-column: 1 / -1; background: var(--green, #023e32); color: #fff; border-color: transparent; font-size: 1.1rem; }
+.cash-quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin: 10px 0; }
+.cash-btn { min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: inherit; font-weight: 800; font-size: 1.3rem; border: 1px solid var(--line); background: #fff; border-radius: 14px; cursor: pointer; }
+.cash-btn small { font-size: .75rem; font-weight: 700; color: #1f7a45; text-transform: uppercase; }
+.cash-btn.on { background: var(--green, #023e32); color: #fff; }
+.cash-btn.on small { color: #bfe5cf; }
+.cash-entry { display: grid; grid-template-columns: 1fr 260px; gap: 16px; align-items: start; }
+@media (max-width: 600px) { .cash-entry { grid-template-columns: 1fr; } }
+.cash-given { font-size: 2.2rem; font-weight: 800; margin: 4px 0; }
+.till-paymodal { max-width: 640px; }

@@ -6,7 +6,6 @@ import { api, kitchenSocket } from "../api.js";
 import { money } from "../format.js";
 import { attempt, toast, useLoad } from "../ui.jsx";
 
-const NOTES = [500, 1000, 2000, 5000];
 
 export default function Till() {
   const menu = useLoad(() => api("/menu"));
@@ -145,6 +144,7 @@ export default function Till() {
               onChange={(e) => setCode(e.target.value)} aria-label="Pay code" />
             <button className="btn primary" disabled={code.replace(/\D/g, "").length < 4}>Find</button>
           </form>
+          <Keypad onKey={(k) => setCode((c) => (k === "C" ? "" : k === "⌫" ? c.slice(0, -1) : (c + k).slice(0, 4)))} done={() => findCode()} />
           {(waiting.data || []).length > 0 && (
             <ul className="till-waiting">
               {waiting.data.map((o) => (
@@ -261,12 +261,42 @@ function OptionPicker({ item, onClose, onAdd }) {
   );
 }
 
+// Touch keypad for the till screen. Cash is typed like a card machine: 5, 9, 0 -> £5.90.
+export function Keypad({ onKey, done }) {
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"];
+  return (
+    <div className="keypad" role="group" aria-label="Keypad">
+      {keys.map((k) => (
+        <button key={k} type="button" className={`key ${k === "C" || k === "⌫" ? "key-fn" : ""}`}
+          onClick={() => onKey(k)} aria-label={k === "⌫" ? "Delete" : k === "C" ? "Clear" : k}>{k}</button>
+      ))}
+      {done && <button type="button" className="key key-done" onClick={done}>Enter</button>}
+    </div>
+  );
+}
+
+// Cash suggestions: the exact amount, then the next round amounts a customer is likely to hand over.
+function cashSuggestions(total) {
+  const out = new Set([total]);
+  for (const step of [100, 500, 1000, 2000, 5000]) {
+    const up = Math.ceil(total / step) * step;
+    if (up > total) out.add(up);
+  }
+  return [...out].sort((a, b) => a - b).slice(0, 5);
+}
+
 function PayModal({ method, total, onClose, onDone }) {
-  const [given, setGiven] = useState("");
+  const [givenPence, setGivenPence] = useState(null); // null = nothing entered yet
   const [busy, setBusy] = useState(false);
-  const givenPence = Math.round(parseFloat(given || "0") * 100);
-  const change = givenPence - total;
+  const change = (givenPence ?? 0) - total;
   const go = async (cash) => { setBusy(true); await onDone(cash); setBusy(false); };
+  const key = (k) => setGivenPence((g) => {
+    const cur = g ?? 0;
+    if (k === "C") return null;
+    if (k === "⌫") return cur >= 10 ? Math.floor(cur / 10) : null;
+    const next = cur * 10 + Number(k);
+    return next > 99999 ? cur : next; // up to £999.99
+  });
 
   return (
     <div className="modal-back" onClick={onClose}>
@@ -283,20 +313,27 @@ function PayModal({ method, total, onClose, onDone }) {
           </>
         ) : (
           <>
-            <h2>💷 Cash payment</h2>
-            <p className="till-amount">{money(total)}</p>
-            <label className="field"><span className="field-label">Cash given (£)</span>
-              <input type="number" step="0.01" min="0" inputMode="decimal" autoFocus value={given} onChange={(e) => setGiven(e.target.value)} /></label>
-            <div className="till-opts">
-              <button className="chip" onClick={() => setGiven((total / 100).toFixed(2))}>Exact</button>
-              {NOTES.filter((n) => n >= total).slice(0, 3).map((n) => (
-                <button key={n} className="chip" onClick={() => setGiven((n / 100).toFixed(2))}>{money(n)}</button>
+            <h2>💷 Cash payment · to pay {money(total)}</h2>
+            <div className="cash-quick">
+              {cashSuggestions(total).map((n) => (
+                <button key={n} type="button" className={`cash-btn ${givenPence === n ? "on" : ""}`} onClick={() => setGivenPence(n)}>
+                  {money(n)}{n === total && <small>exact</small>}
+                </button>
               ))}
             </div>
-            {given && <p className={`till-change ${change < 0 ? "short" : ""}`}>{change < 0 ? `${money(-change)} still to pay` : `Change: ${money(change)}`}</p>}
+            <div className="cash-entry">
+              <div>
+                <span className="field-label">Cash given</span>
+                <p className="cash-given">{givenPence === null ? <span className="muted">£0.00</span> : money(givenPence)}</p>
+                {givenPence !== null && (
+                  <p className={`till-change ${change < 0 ? "short" : ""}`}>{change < 0 ? `${money(-change)} still to pay` : `Change: ${money(change)}`}</p>
+                )}
+              </div>
+              <Keypad onKey={key} />
+            </div>
             <div className="modal-actions">
               <button className="btn ghost" onClick={onClose}>Cancel</button>
-              <button className="btn primary big" disabled={busy || !given || change < 0} onClick={() => go(givenPence)}>✓ Cash taken · complete sale</button>
+              <button className="btn primary big" disabled={busy || givenPence === null || change < 0} onClick={() => go(givenPence)}>✓ Cash taken · complete sale</button>
             </div>
           </>
         )}
