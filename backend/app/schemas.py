@@ -246,6 +246,8 @@ class PaymentStart(BaseModel):
 
 class AcceptIn(BaseModel):
     prep_minutes: int | None = Field(None, ge=1, le=180)
+    # The kitchen accepts but needs longer than usual (+5/+10/+15/+20/+30): the customer is told the later time.
+    extra_minutes: int = Field(0, ge=0, le=180)
 
 
 class DelayIn(BaseModel):

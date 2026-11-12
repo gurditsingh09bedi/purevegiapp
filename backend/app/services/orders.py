@@ -353,9 +353,13 @@ def ready_time(order: Order, settings: RestaurantSettings) -> datetime:
     return kitchen.ready_at(timing(order), settings.default_prep_minutes)
 
 
-def accept(db, outbox, order: Order, prep_minutes: int | None, settings, now, actor: User | None = None) -> Order:
+def accept(db, outbox, order: Order, prep_minutes: int | None, settings, now, actor: User | None = None,
+           extra_minutes: int = 0) -> Order:
     order.accepted_at = now
     order.prep_minutes = prep_minutes or settings.default_prep_minutes
+    if extra_minutes:
+        # The "accepted" text then carries the later time (e.g. "should arrive around 7:05 pm").
+        order.extra_minutes = (order.extra_minutes or 0) + extra_minutes
     return move(db, outbox, order, Status.ACCEPTED, actor, settings, now)
 
 

@@ -89,9 +89,11 @@ def test_delivery_asap_to_review_prompt(client):
     assert queue[0]["order"]["id"] == order["id"] and queue[0]["pre_order"] is False
 
     oid = order["id"]
-    assert c.post(f"/kitchen/orders/{oid}/accept", headers=chef, json={"prep_minutes": 15}).json()["status"] == "accepted"
+    ok = c.post(f"/kitchen/orders/{oid}/accept", headers=chef, json={"extra_minutes": 15}).json()
+    assert ok["status"] == "accepted"  # kitchen needs 15 min more than usual: customer told 7pm, not 6:45
+    assert datetime.fromisoformat(ok["arrive_by"]).replace(tzinfo=UTC) == EVENING + timedelta(minutes=60)
     late = c.post(f"/kitchen/orders/{oid}/delay", headers=chef, json={"minutes": 10}).json()
-    assert datetime.fromisoformat(late["arrive_by"]).replace(tzinfo=UTC) == EVENING + timedelta(minutes=55)
+    assert datetime.fromisoformat(late["arrive_by"]).replace(tzinfo=UTC) == EVENING + timedelta(minutes=70)
     assert c.post(f"/kitchen/orders/{oid}/start", headers=chef).json()["status"] == "preparing"
     assert c.post(f"/kitchen/orders/{oid}/ready", headers=chef).json()["status"] == "ready"
     assert c.post(f"/driver/orders/{oid}/picked-up", headers=driver).json()["status"] == "out_for_delivery"

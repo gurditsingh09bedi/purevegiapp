@@ -68,7 +68,7 @@ def kitchen_queue(
 def accept(order_id: int, body: AcceptIn, db: Session = Depends(get_db), user: User = Depends(kitchen_staff),
            s=Depends(settings), outbox: Outbox = Depends(get_outbox), at=Depends(now)):
     order = _get(db, order_id)
-    _run(db, svc.accept, db, outbox, order, body.prep_minutes, s, at, user)
+    _run(db, svc.accept, db, outbox, order, body.prep_minutes, s, at, user, body.extra_minutes)
     return order_out(order, s)
 
 

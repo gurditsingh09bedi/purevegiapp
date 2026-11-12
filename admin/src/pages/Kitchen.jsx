@@ -178,15 +178,7 @@ export default function Kitchen() {
   const extra = meter?.busy_extra_minutes || 0;
   const baseMins = (meter?.delivery_minutes || 45) - (meter?.busy_extra_minutes || 0);
 
-  async function setBusyTime(next) {
-    const r = await attempt(() => api("/kitchen/busy-time", { method: "POST", body: { extra_minutes: next, tell_customers: true } }),
-      next ? `Delivery time now ${baseMins + next} min` : `Delivery time back to ${baseMins} min`);
-    if (r) {
-      setMeter((m) => ({ ...(m || {}), busy_extra_minutes: r.busy_extra_minutes, delivery_minutes: r.delivery_minutes }));
-      if (r.customers_told) toast(`${r.customers_told} waiting customer${r.customers_told > 1 ? "s" : ""} told the new time`);
-      load();
-    }
-  }
+
   const waitingOrders = (tickets || []).filter((t) => t.order.status === "placed").map((t) => t.order);
 
   return (
@@ -208,16 +200,6 @@ export default function Kitchen() {
         >
           {info?.online_orders_paused ? "Online orders PAUSED · tap to resume" : "Busy? Pause online orders"}
         </button>
-      </div>
-
-      <div className="delivery-time" role="group" aria-label="Delivery time">
-        <span className="dt-now">🛵 Delivery time <b>{baseMins + extra} min</b>{extra ? <span className="dt-extra"> (+{extra} busy)</span> : null}</span>
-        <span className="muted small-label">Busy? Add</span>
-        {delays.map((m) => (
-          <button key={m} className="btn ghost" onClick={() => setBusyTime(extra + m)}>+{m}</button>
-        ))}
-        {extra > 0 && <button className="btn" onClick={() => setBusyTime(0)}>Back to {baseMins} min</button>}
-        <span className="muted small">New customers see the new time; customers already waiting get a text.</span>
       </div>
 
       {soundOn && !ready && (
@@ -263,7 +245,7 @@ export default function Kitchen() {
                 <h2>{col.title} <span className="count">{list.length}</span></h2>
                 {list.length === 0 && <p className="muted empty">Nothing here</p>}
                 {list.map((t) => (
-                  <Ticket key={t.order.id} t={t} now={now} choices={choices} delays={delays} act={act} />
+                  <Ticket key={t.order.id} t={t} now={now} choices={choices} delays={delays} act={act} deliveryMins={baseMins + extra} />
                 ))}
               </section>
             );
@@ -274,7 +256,7 @@ export default function Kitchen() {
   );
 }
 
-function Ticket({ t, now, choices, delays, act }) {
+function Ticket({ t, now, choices, delays, act, deliveryMins }) {
   const o = t.order;
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
@@ -312,7 +294,20 @@ function Ticket({ t, now, choices, delays, act }) {
       {o.notes && <p className="note">Order note: “{o.notes}”</p>}
 
       <div className="actions">
-        {o.status === "placed" && !rejecting && (
+        {o.status === "placed" && !rejecting && o.type === "delivery" && (
+          <>
+            <button className="btn primary" onClick={() => act(`/kitchen/orders/${id}/accept`, {}, `#${id} accepted · customer told ${o.promised_minutes || deliveryMins} min`)}>
+              Accept · {o.promised_minutes || deliveryMins} min
+            </button>
+            <span className="muted small-label">Need more time?</span>
+            {delays.map((m) => (
+              <button key={m} className="btn ghost" onClick={() => act(`/kitchen/orders/${id}/accept`, { extra_minutes: m },
+                `#${id} accepted · customer told ${(o.promised_minutes || deliveryMins) + m} min`)}>+{m}</button>
+            ))}
+            <button className="btn ghost" onClick={() => setRejecting(true)}>Reject</button>
+          </>
+        )}
+        {o.status === "placed" && !rejecting && o.type !== "delivery" && (
           <>
             <span className="muted small-label">Accept · ready in</span>
             {choices.map((m) => (
