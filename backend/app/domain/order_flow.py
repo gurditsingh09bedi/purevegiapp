@@ -5,8 +5,8 @@
                                                                 -> served      (dine-in)
     placed -> rejected (refund);  pending_payment / placed / accepted -> cancelled
 
-Dine-in orders are paid at the end of the meal, so they skip
-``pending_payment`` and start at ``placed``.
+Every order is paid before it reaches the kitchen. Table (dine-in) guests pay online from their
+phone, or at the till with a 4-digit pay code; till sales are paid on the spot.
 """
 
 from __future__ import annotations
@@ -77,7 +77,8 @@ def check_transition(current: Status, target: Status, order_type: OrderType) -> 
 
 
 def initial_status(order_type: OrderType) -> Status:
-    return Status.PLACED if order_type is OrderType.DINE_IN else Status.PENDING_PAYMENT
+    """Online and table orders wait for payment; only paid orders go to the kitchen."""
+    return Status.PENDING_PAYMENT
 
 
 def status_after_payment(auto_accept: bool) -> Status:

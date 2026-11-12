@@ -51,7 +51,7 @@ export default function Tables() {
 
   async function paid(tab, method) {
     const ok = await attempt(() => api(`/tables/sessions/${tab.table_session_id}/paid`, { method: "POST", body: { payment_method: method } }),
-      `Table ${tab.table_number} paid by ${method}, table is free again`);
+      method === "closed" ? `Table ${tab.table_number} is free again` : `Table ${tab.table_number} paid by ${method}, table is free again`);
     if (ok) tabs.reload();
   }
 
@@ -93,10 +93,14 @@ export default function Tables() {
                       {tab ? (
                         <div className="tab-now">
                           <span className={`badge ${tab.pay_at_till ? "warn" : "ok"}`}>{tab.pay_at_till ? "🔔 Wants to pay" : "Eating"}</span>
-                          <span>{tab.orders} order{tab.orders > 1 ? "s" : ""} · <b>{money(tab.due_pence)}</b></span>
+                          <span>{tab.orders} order{tab.orders > 1 ? "s" : ""} · {tab.due_pence > 0 ? <b>{money(tab.due_pence)} to pay</b> : <>{money(tab.total_pence)} paid</>}</span>
                           <span className="b-actions">
-                            <button className="btn ghost small" onClick={() => paid(tab, "card")}>Card paid</button>
-                            <button className="btn ghost small" onClick={() => paid(tab, "cash")}>Cash paid</button>
+                            {tab.due_pence > 0 ? (
+                              <>
+                                <button className="btn ghost small" onClick={() => paid(tab, "card")}>Card paid</button>
+                                <button className="btn ghost small" onClick={() => paid(tab, "cash")}>Cash paid</button>
+                              </>
+                            ) : <button className="btn ghost small" onClick={() => paid(tab, "closed")}>Guests left · free table</button>}
                           </span>
                         </div>
                       ) : <span className="muted">Free</span>}

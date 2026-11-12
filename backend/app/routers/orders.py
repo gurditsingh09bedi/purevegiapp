@@ -63,6 +63,7 @@ def place_order(
     db.commit()
     out = order_out(order, s)
     out.view_token = create_token(str(order.id), cfg.jwt_secret, minutes=60 * 24 * 30, kind="order")
+    out.pay_code = order.pay_code
     return out
 
 

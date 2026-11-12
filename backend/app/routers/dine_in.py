@@ -298,7 +298,10 @@ def table_paid(session_id: int, body: TablePaidIn | None = None, db: Session = D
 
 def _close_paid(db: Session, outbox: Outbox, ts: TableSession, method: str, s: RestaurantSettings, at: datetime) -> None:
     for o in ts.orders:
-        if o.paid_at is None and o.status not in {Status.REJECTED, Status.CANCELLED}:
+        if o.status is Status.PENDING_PAYMENT:  # paid now: it goes to the kitchen
+            o.payment_method = method if method != "closed" else "card"
+            svc.mark_paid(db, outbox, o, s, at)
+        elif o.paid_at is None and o.status not in {Status.REJECTED, Status.CANCELLED}:
             o.paid_at = at
             o.payment_method = method
     ts.payment_method = method
@@ -322,9 +325,10 @@ def _session_from_qr(db: Session, token: str, cfg: AppConfig) -> TableSession:
 def _bill(ts: TableSession, s: RestaurantSettings) -> BillOut:
     live = [o for o in ts.orders if o.status not in {Status.REJECTED, Status.CANCELLED}]
     total = sum(o.total_pence for o in live)
+    unpaid = sum(o.total_pence for o in live if o.paid_at is None)  # orders are paid one by one now
     deposit = ts.booking.deposit_pence if ts.booking and ts.booking.deposit_paid else 0
     return BillOut(table_number=ts.table.number, orders=[order_out(o, s) for o in live], total_pence=total,
-                   deposit_pence=deposit, due_pence=rules.amount_due_at_end(total, deposit), table_session_id=ts.id,
+                   deposit_pence=deposit, due_pence=rules.amount_due_at_end(unpaid, deposit), table_session_id=ts.id,
                    paid=ts.paid, pay_at_till=ts.pay_at_till_at is not None, payment_method=ts.payment_method)
 
 

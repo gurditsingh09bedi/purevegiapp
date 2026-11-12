@@ -296,3 +296,5 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
   .qr-card { position: fixed; inset: 0; margin: auto; box-shadow: none; }
   .qr-card .modal-actions { display: none; }
 }
+.till-code input { font-size: 1.3rem; letter-spacing: .2em; flex: 1; }
+.till-waiting { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }

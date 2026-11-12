@@ -217,6 +217,8 @@ def create_order(
 
     if data.type is OrderType.DINE_IN:
         order.table_session = _table_session(db, data.table_token, cfg)
+        order.channel = "table"
+        order.pay_code = _new_pay_code(db)
 
     order.discount_pence, promo = _promotion_discount(db, data.promo_code, subtotal, order.delivery_fee_pence, now)
     if promo:
@@ -227,11 +229,33 @@ def create_order(
     db.add(order)
     db.flush()
     _record(db, order, order.status, user, now)
-    if order.status is Status.PLACED:  # dine-in goes straight to the kitchen
-        _announce(db, outbox, order, settings)
-        if settings.auto_accept:
-            accept(db, outbox, order, None, settings, now)
     return order
+
+
+def _new_pay_code(db: Session) -> str:
+    """A 4-digit code no other unpaid order is using."""
+    import secrets
+
+    taken = set(db.scalars(select(Order.pay_code).where(Order.status == Status.PENDING_PAYMENT,
+                                                          Order.pay_code.is_not(None))).all())
+    for _ in range(50):
+        code = f"{secrets.randbelow(9000) + 1000}"
+        if code not in taken:
+            return code
+    raise OrderError("too many orders waiting at the till, please try again", 503)
+
+
+def find_by_pay_code(db: Session, code: str) -> Order | None:
+    return db.scalar(select(Order).where(Order.pay_code == code.strip(), Order.status == Status.PENDING_PAYMENT)
+                     .order_by(Order.id.desc()))
+
+
+def pay_at_till(db: Session, outbox: Outbox, order: Order, method: str, settings, now, actor: User | None = None) -> Order:
+    """The cashier took card or cash for a table order: it's paid and goes to the kitchen."""
+    if order.status is not Status.PENDING_PAYMENT:
+        raise OrderError("this order is already paid", 409)
+    order.payment_method = method
+    return mark_paid(db, outbox, order, settings, now)
 
 
 # --- Delivery times ------------------------------------------------------------------

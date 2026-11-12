@@ -18,10 +18,14 @@ export default function Till() {
   const [picking, setPicking] = useState(null); // item being customised
   const [paying, setPaying] = useState(null); // "card" | "cash"
   const tables = useLoad(() => api("/till/tables"));
+  const waiting = useLoad(() => api("/till/waiting"));
+  const [code, setCode] = useState("");
+  const [codeOrder, setCodeOrder] = useState(null); // a table order found by its pay code
+  const [codePaying, setCodePaying] = useState(null); // "card" | "cash"
 
   useEffect(() => {
-    const t = setInterval(tables.reload, 15000);
-    const stop = kitchenSocket((ev) => { if (ev.event === "table_pay_at_till" || ev.event === "table_closed") tables.reload(); });
+    const t = setInterval(() => { tables.reload(); waiting.reload(); }, 10000);
+    const stop = kitchenSocket(() => { tables.reload(); waiting.reload(); });
     return () => { clearInterval(t); stop(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -61,9 +65,25 @@ export default function Till() {
     setLines([]); setName(""); setNote(""); setPaying(null);
   }
 
+  // A guest shows their 4-digit code (a QR scanner types it in and presses Enter).
+  async function findCode(e) {
+    e?.preventDefault();
+    const c = code.replace(/\D/g, "").slice(-4);
+    if (c.length !== 4) return;
+    const o = await attempt(() => api(`/till/pay-code/${c}`));
+    if (o) setCodeOrder(o);
+    setCode("");
+  }
+
+  async function codePaid(method) {
+    const o = await attempt(() => api(`/till/pay-code/${codeOrder.pay_code}/paid`, { method: "POST", body: { payment_method: method } }),
+      `Table ${codeOrder.table_number} paid by ${method}: order sent to the kitchen`);
+    if (o) { setCodeOrder(null); setCodePaying(null); waiting.reload(); tables.reload(); }
+  }
+
   async function tablePaid(t, method) {
     const ok = await attempt(() => api(`/tables/sessions/${t.table_session_id}/paid`, { method: "POST", body: { payment_method: method } }),
-      `Table ${t.table_number} paid by ${method}`);
+      method === "closed" ? `Table ${t.table_number} is free again` : `Table ${t.table_number} paid by ${method}`);
     if (ok) tables.reload();
   }
 
@@ -118,6 +138,26 @@ export default function Till() {
           {lines.length > 0 && <button className="btn ghost small" onClick={() => setLines([])}>Clear</button>}
         </div>
 
+        <div className="card till-code">
+          <h2>Table pay code</h2>
+          <form className="row-form" onSubmit={findCode}>
+            <input autoFocus inputMode="numeric" placeholder="4-digit code or scan QR" value={code}
+              onChange={(e) => setCode(e.target.value)} aria-label="Pay code" />
+            <button className="btn primary" disabled={code.replace(/\D/g, "").length < 4}>Find</button>
+          </form>
+          {(waiting.data || []).length > 0 && (
+            <ul className="till-waiting">
+              {waiting.data.map((o) => (
+                <li key={o.id}>
+                  <button className="chip" onClick={() => setCodeOrder(o)}>
+                    <b>{o.pay_code}</b> · Table {o.table_number} · {money(o.total_pence)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <div className="card till-tables">
           <h2>Tables to pay</h2>
           {!tables.data?.length ? <p className="muted">No open tables.</p> : tables.data.map((t) => (
@@ -125,16 +165,39 @@ export default function Till() {
               <div>
                 <b>Table {t.table_number}</b> · {money(t.due_pence)}
                 {t.pay_at_till && <div className="asked-tag">🔔 Wants to pay at the till</div>}
+                {t.due_pence === 0 && <div className="muted small">All paid · eating</div>}
               </div>
               <div className="b-actions">
-                <button className="btn ghost small" onClick={() => tablePaid(t, "card")}>Card paid</button>
-                <button className="btn ghost small" onClick={() => tablePaid(t, "cash")}>Cash paid</button>
+                {t.due_pence > 0 ? (
+                  <>
+                    <button className="btn ghost small" onClick={() => tablePaid(t, "card")}>Card paid</button>
+                    <button className="btn ghost small" onClick={() => tablePaid(t, "cash")}>Cash paid</button>
+                  </>
+                ) : <button className="btn ghost small" onClick={() => tablePaid(t, "closed")}>Guests left · free table</button>}
               </div>
             </div>
           ))}
         </div>
       </aside>
 
+      {codeOrder && !codePaying && (
+        <div className="modal-back" onClick={() => setCodeOrder(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Table {codeOrder.table_number} · code {codeOrder.pay_code}</h2>
+            <ul className="till-lines">
+              {codeOrder.items.map((it, i) => (
+                <li key={i}><div><b>{it.quantity}× {it.name}</b>{it.options.length > 0 && <div className="muted small">{it.options.map((x) => x.name).join(", ")}</div>}</div><span /><span className="num">{money(it.unit_price_pence * it.quantity)}</span></li>
+              ))}
+            </ul>
+            <div className="till-total"><span>To pay</span><b>{money(codeOrder.total_pence)}</b></div>
+            <div className="till-pay">
+              <button className="btn primary big" onClick={() => setCodePaying("card")}>💳 Card</button>
+              <button className="btn primary big" onClick={() => setCodePaying("cash")}>💷 Cash</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {codeOrder && codePaying && <PayModal method={codePaying} total={codeOrder.total_pence} onClose={() => setCodePaying(null)} onDone={() => codePaid(codePaying)} />}
       {picking && <OptionPicker item={picking} onClose={() => setPicking(null)} onAdd={(opts) => { add(picking, opts); setPicking(null); }} />}
       {paying && <PayModal method={paying} total={total} onClose={() => setPaying(null)} onDone={(cash) => complete(paying, cash)} />}
     </div>

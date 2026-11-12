@@ -236,6 +236,7 @@ class OrderOut(ORM):
     payment_method: str | None = None
     table_number: str | None = None
     view_token: str | None = None  # only on the order-placed response: lets a guest track this order
+    pay_code: str | None = None  # table orders: 4-digit code to pay at the till
 
 
 class PaymentStart(BaseModel):
@@ -401,7 +402,7 @@ class TillOrderIn(BaseModel):
 
 
 class TablePaidIn(BaseModel):
-    payment_method: str = Field("card", pattern="^(card|cash|online)$")
+    payment_method: str = Field("card", pattern="^(card|cash|online|closed)$")  # closed: nothing to pay, guests left
 
 
 class BusyTimeIn(BaseModel):

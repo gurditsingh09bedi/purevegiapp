@@ -1,6 +1,6 @@
 """Kitchen screen and driver app actions."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -14,7 +14,18 @@ from ..domain.order_flow import OrderType, Status
 from ..domain.settings import RestaurantSettings
 from ..models import DriverLocation, Order, TableSession, User
 from ..realtime import Outbox, get_outbox
-from ..schemas import AcceptIn, BusyTimeIn, DelayIn, LocationIn, OrderOut, RejectIn, TableTabOut, TicketOut, TillOrderIn
+from ..schemas import (
+    AcceptIn,
+    BusyTimeIn,
+    DelayIn,
+    LocationIn,
+    OrderOut,
+    RejectIn,
+    TablePaidIn,
+    TableTabOut,
+    TicketOut,
+    TillOrderIn,
+)
 from ..services import orders as svc
 from ..services.settings_store import save_settings
 from .orders import order_out
@@ -155,6 +166,42 @@ def till_order(body: TillOrderIn, db: Session = Depends(get_db), user: User = De
     return order_out(order, s)
 
 
+@router.get("/till/waiting", response_model=list[OrderOut])
+def waiting_to_pay(db: Session = Depends(get_db), _: User = Depends(kitchen_staff), s: RestaurantSettings = Depends(settings),
+                   at=Depends(now)):
+    """Table orders whose guests chose "pay at the till" and haven't paid yet (last 3 hours)."""
+    rows = db.scalars(select(Order).where(Order.status == Status.PENDING_PAYMENT, Order.pay_code.is_not(None),
+                                          Order.created_at >= at - timedelta(hours=3)).order_by(Order.id.desc())).all()
+    return [_with_code(o, s) for o in rows]
+
+
+def _with_code(o: Order, s: RestaurantSettings) -> OrderOut:
+    out = order_out(o, s)
+    out.pay_code = o.pay_code
+    return out
+
+
+@router.get("/till/pay-code/{code}", response_model=OrderOut)
+def order_by_pay_code(code: str, db: Session = Depends(get_db), _: User = Depends(kitchen_staff),
+                      s: RestaurantSettings = Depends(settings)):
+    """The cashier types (or scans) the guest's 4-digit code and sees the order and total."""
+    order = svc.find_by_pay_code(db, code)
+    if order is None:
+        raise HTTPException(404, "no unpaid order with that code")
+    return _with_code(order, s)
+
+
+@router.post("/till/pay-code/{code}/paid", response_model=OrderOut)
+def paid_by_pay_code(code: str, body: TablePaidIn, db: Session = Depends(get_db), user: User = Depends(kitchen_staff),
+                     s: RestaurantSettings = Depends(settings), outbox: Outbox = Depends(get_outbox), at=Depends(now)):
+    """Card (on the card machine) or cash taken: the order is paid and goes to the kitchen."""
+    order = svc.find_by_pay_code(db, code)
+    if order is None:
+        raise HTTPException(404, "no unpaid order with that code")
+    _run(db, svc.pay_at_till, db, outbox, order, body.payment_method, s, at, user)
+    return _with_code(order, s)
+
+
 @router.get("/till/tables", response_model=list[TableTabOut])
 def open_tables(db: Session = Depends(get_db), _: User = Depends(kitchen_staff)):
     """Tables with an open tab, for taking payment at the till. Tables that asked to pay at the till first."""
@@ -164,9 +211,10 @@ def open_tables(db: Session = Depends(get_db), _: User = Depends(kitchen_staff))
         if not live:
             continue
         total = sum(o.total_pence for o in live)
+        unpaid = sum(o.total_pence for o in live if o.paid_at is None)
         deposit = ts.booking.deposit_pence if ts.booking and ts.booking.deposit_paid else 0
         out.append(TableTabOut(table_session_id=ts.id, table_number=ts.table.number, orders=len(live),
-                               total_pence=total, due_pence=max(0, total - deposit),
+                               total_pence=total, due_pence=max(0, unpaid - deposit),
                                pay_at_till=ts.pay_at_till_at is not None,
                                opened_at=min(svc.aware(o.created_at) for o in live)))
     return sorted(out, key=lambda t: (not t.pay_at_till, t.opened_at or datetime.min.replace(tzinfo=UTC)))

@@ -160,27 +160,44 @@ def test_till_sale_card_or_cash_goes_to_kitchen(client):
     assert {r["method"] for r in report} == {"card", "cash"}
 
 
-def test_table_pays_online_or_at_the_till(client):
+def test_table_order_is_paid_first_online_or_at_the_till(client):
     c = client
     owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
     tables = c.get("/admin/tables", headers=owner).json()
     qr1, qr2 = (t["qr_url"].split("/t/")[1] for t in tables[:2])
     item = plain_item(c)
-    for qr in (qr1, qr2):
+
+    def order(qr):
         r = c.post("/orders", json={"type": "dine_in", "table_token": qr, "items": [{"menu_item_id": item, "quantity": 1}]})
         assert r.status_code == 201, r.text
-    bill = c.get(f"/tables/qr/{qr1}/bill").json()
-    assert bill["due_pence"] > 0 and bill["paid"] is False
-    assert c.post(f"/tables/qr/{qr1}/pay").json()["dev_mode"] is True
-    assert c.post(f"/tables/qr/{qr1}/test-pay").json()["payment_method"] == "online"
-    assert c.get(f"/tables/qr/{qr1}/bill").status_code == 404  # tab closed
+        return r.json()
 
-    assert c.post(f"/tables/qr/{qr2}/pay-at-till").json()["pay_at_till"] is True
+    def in_kitchen(oid):
+        return any(t["order"]["id"] == oid for t in c.get("/kitchen/queue", headers=owner).json())
+
+    # Table 1 pays online from the phone
+    online = order(qr1)
+    assert online["status"] == "pending_payment" and len(online["pay_code"]) == 4
+    assert not in_kitchen(online["id"])
+    paid = c.post(f"/orders/{online['id']}/test-pay", headers={"X-Order-Token": online["view_token"]}).json()
+    assert paid["status"] == "placed" and paid["payment_method"] == "online" and in_kitchen(online["id"])
+
+    # Table 2 pays at the till with its 4-digit code
+    till = order(qr2)
+    code = till["pay_code"]
+    assert [o["id"] for o in c.get("/till/waiting", headers=owner).json()] == [till["id"]]
+    seen = c.get(f"/till/pay-code/{code}", headers=owner).json()
+    assert seen["id"] == till["id"] and seen["table_number"] == "2"
+    done = c.post(f"/till/pay-code/{code}/paid", headers=owner, json={"payment_method": "cash"}).json()
+    assert done["status"] == "placed" and done["payment_method"] == "cash" and in_kitchen(till["id"])
+    assert c.get(f"/till/pay-code/{code}", headers=owner).status_code == 404  # used
+    assert c.get("/till/waiting", headers=owner).json() == []
+
+    # Both tables are eating, nothing left to pay; staff close the table when guests leave
     tabs = c.get("/till/tables", headers=owner).json()
-    assert tabs[0]["pay_at_till"] is True and tabs[0]["table_number"] == "2"
-    r = c.post(f"/tables/sessions/{tabs[0]['table_session_id']}/paid", headers=owner, json={"payment_method": "cash"})
-    assert r.status_code == 204
-    assert c.get("/till/tables", headers=owner).json() == []
+    assert {t["table_number"] for t in tabs} == {"1", "2"} and all(t["due_pence"] == 0 for t in tabs)
+    r = c.post(f"/tables/sessions/{tabs[0]['table_session_id']}/paid", headers=owner, json={"payment_method": "closed"})
+    assert r.status_code == 204 and len(c.get("/till/tables", headers=owner).json()) == 1
 
 
 def test_sauces_up_to_two_on_wraps(client):

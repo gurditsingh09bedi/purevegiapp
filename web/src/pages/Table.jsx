@@ -1,9 +1,9 @@
 // Dine-in: the QR code on each table opens /t/<token>. Guests order from their phone,
 // rounds go straight to the kitchen, and the bill is paid at the end of the meal.
 import { useEffect, useRef, useState } from "react";
-import { api, myOrderTokens, STRIPE_PK } from "../api.js";
+import { api, myOrderTokens, orderHeaders, STRIPE_PK } from "../api.js";
 import { confetti } from "../fx.js";
-import { loadStripe } from "./Checkout.jsx";
+import { loadStripe, PayStep } from "./Checkout.jsx";
 import { money, whenOpen } from "../format.js";
 import { Link, native, navigate, openNow, useApp } from "../state.jsx";
 import { MenuSection } from "./Home.jsx";
@@ -52,11 +52,15 @@ export function TableCheckout() {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [placed, setPlaced] = useState(null); // {order, how: "online" | "till"}
+
+  if (placed?.how === "online") return <PayStep order={placed.order} />;
+  if (placed?.how === "till") return <PayAtTill order={placed.order} number={table?.number} />;
 
   if (!table) return <div className="page narrow"><p>Scan the QR code on your table to order.</p><Link to="/" className="btn">Go to the menu</Link></div>;
   if (!cart.length) return <div className="page narrow"><p className="muted">Nothing added yet.</p><Link to={`/t/${table.token}`} className="btn primary">Back to the menu</Link></div>;
 
-  async function send() {
+  async function send(how) {
     setBusy(true);
     setError("");
     try {
@@ -70,8 +74,7 @@ export function TableCheckout() {
       });
       if (o.view_token) myOrderTokens.add(o.id, o.view_token);
       clear();
-      try { sessionStorage.setItem("pv_celebrate", String(o.id)); } catch { /* ignore */ }
-      navigate(`/order/${o.id}`);
+      setPlaced({ order: o, how });
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -90,8 +93,12 @@ export function TableCheckout() {
         <label className="field"><span className="field-label">Your name (optional)</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="field"><span className="field-label">Note for the kitchen (optional)</span><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Allergies, spice level…" /></label>
         {error && <p className="error" role="alert">{error}</p>}
-        <button className="btn primary wide big" onClick={send} disabled={busy}>{busy ? "Sending…" : "Send to kitchen"}</button>
-        <p className="muted small center">No payment now. At the end, pay from your phone or at the till.</p>
+        <p className="pay-ask"><b>How would you like to pay?</b> Your order goes to the kitchen as soon as it's paid.</p>
+        <div className="bill-actions">
+          <button className="btn primary big" onClick={() => send("online")} disabled={busy}>{busy ? "One moment…" : "💳 Pay online now"}</button>
+          <button className="btn ghost big" onClick={() => send("till")} disabled={busy}>🧾 Pay at the cashier</button>
+        </div>
+        <p className="muted small center">At the cashier you can pay by card or cash: show them your 4-digit code.</p>
       </section>
     </div>
   );
@@ -187,5 +194,38 @@ function TableBill({ token, number }) {
       )}
       {state.error && <p className="error" role="alert">{state.error}</p>}
     </section>
+  );
+}
+
+// "Pay at the cashier": a 4-digit code and its QR to show at the till. Once the cashier takes card or
+// cash, the order goes to the kitchen and this page moves on to tracking it.
+function PayAtTill({ order, number }) {
+  const [status, setStatus] = useState(order.status);
+  useEffect(() => {
+    const t = setInterval(() => {
+      api(`/orders/${order.id}`, { headers: orderHeaders(order.id), quiet: true }).then((o) => {
+        setStatus(o.status);
+        if (o.status !== "pending_payment") {
+          clearInterval(t);
+          confetti();
+          try { sessionStorage.setItem("pv_celebrate", String(order.id)); } catch { /* ignore */ }
+          setTimeout(() => navigate(`/order/${order.id}`), 1200);
+        }
+      }).catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [order.id]);
+  const code = order.pay_code;
+  return (
+    <div className="page narrow pay-code-page">
+      <p className="eyebrow">Table {number} · Order #{order.id}</p>
+      <h1>{status === "pending_payment" ? "Pay at the cashier" : "Paid, thank you!"}</h1>
+      <p className="lede">Show this code at the till and pay <b>{money(order.total_pence)}</b> by card or cash.</p>
+      <div className="pay-code-card">
+        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(code)}`} alt={`QR code for pay code ${code}`} width="240" height="240" />
+        <div className="pay-code" aria-label={`Pay code ${code.split("").join(" ")}`}>{code}</div>
+      </div>
+      <p className="muted">{status === "pending_payment" ? "Waiting for payment… your order goes to the kitchen as soon as it's paid." : "Your order is on its way to the kitchen."}</p>
+    </div>
   );
 }

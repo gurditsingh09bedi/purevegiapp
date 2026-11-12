@@ -134,8 +134,8 @@ def test_wrong_moves_blocked():
         order_flow.check_transition(Status.DELIVERED, Status.CANCELLED, OrderType.DELIVERY)
 
 
-def test_dine_in_starts_placed_and_ends_served():
-    assert order_flow.initial_status(OrderType.DINE_IN) is Status.PLACED
+def test_dine_in_is_paid_first_and_ends_served():
+    assert order_flow.initial_status(OrderType.DINE_IN) is Status.PENDING_PAYMENT
     order_flow.check_transition(Status.READY, Status.SERVED, OrderType.DINE_IN)
 
 

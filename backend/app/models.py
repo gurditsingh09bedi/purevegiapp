@@ -200,6 +200,8 @@ class Order(TS, Base):
     channel: Mapped[str | None] = mapped_column(String(16))  # None/"online" website or app, "till" front counter
     service: Mapped[str | None] = mapped_column(String(16))  # till orders: "takeaway" | "eat_in"
     payment_method: Mapped[str | None] = mapped_column(String(16))  # "online" | "card" | "cash"
+    # Table orders paid at the till: the guest shows this 4-digit code (or its QR) at the cashier.
+    pay_code: Mapped[str | None] = mapped_column(String(8), index=True)
 
     # Kitchen timing
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
