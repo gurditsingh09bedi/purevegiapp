@@ -39,7 +39,6 @@ export default function Checkout() {
   const collectionOn = restaurant?.collection_enabled !== false;
   const canOrder = type === "delivery" ? deliveryOpen : collectionOn && shopOpen;
   const deliveryMins = load?.delivery_minutes || d?.minutes || 45;
-  const collectMins = load?.wait_minutes || restaurant?.default_prep_minutes || 20;
   useEffect(() => {
     // Delivery closed but collection open (e.g. Tuesday lunchtime): start on collection.
     if (restaurant && d && !d.open_now && collectionOn && shopOpen) setType("collection");
@@ -142,19 +141,26 @@ export default function Checkout() {
             <BusyMeter compact />
           </section>
 
-          {canOrder && (
-            <section className="panel eta-panel">
-              <span className="eta-icon" aria-hidden="true">{type === "delivery" ? "🛵" : "🥡"}</span>
-              <div>
-                <b>{type === "delivery" ? `Delivered in about ${deliveryMins} minutes` : `Ready to collect in about ${collectMins} minutes`}</b>
-                <p className="muted small">
-                  {type === "delivery"
-                    ? "Straight to your door as soon as it's cooked. If we get busy we'll text you a new time."
-                    : `From ${restaurant?.address || "324 Soho Rd, Handsworth"}. We'll text you when it's ready.`}
-                </p>
-              </div>
-            </section>
-          )}
+          <section className={`panel eta-panel ${canOrder ? "" : "off"}`}>
+            <span className="eta-icon" aria-hidden="true">{type === "delivery" ? "🛵" : "🥡"}</span>
+            <div>
+              {type === "delivery" ? (
+                <>
+                  <b>We aim to deliver within {deliveryMins} minutes</b>
+                  <p className="muted small">
+                    {canOrder
+                      ? "Straight to your door as soon as it's cooked. If the kitchen gets busy we'll text you the new time."
+                      : `We're not delivering right now. ${d?.hours_text || "We deliver Friday to Sunday, 5pm to 10pm."}`}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <b>Collect from {restaurant?.address || "324 Soho Rd, Handsworth, Birmingham B21 9NA"}</b>
+                  <p className="muted small">{canOrder ? "We'll text you as soon as it's ready." : "We're closed right now."}</p>
+                </>
+              )}
+            </div>
+          </section>
 
           {type === "delivery" && (
             <section className="panel">

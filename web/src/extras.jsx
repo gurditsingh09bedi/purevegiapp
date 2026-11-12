@@ -37,7 +37,7 @@ export function BusyMeter({ compact = false }) {
       <span className="busy-bars" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= l.bars ? "on" : ""} />)}</span>
       <span className="busy-text">
         <b>{load.paused ? "Online orders paused" : `Kitchen: ${l.word}`}</b>
-        {!load.paused && <span>{load.delivery_open !== false && restaurant.delivery?.enabled ? `Delivery in about ${load.delivery_minutes || 45} min` : `Ready to collect in about ${load.wait_minutes} min`}</span>}
+        {!load.paused && restaurant.delivery?.enabled && <span>Delivery within about {load.delivery_minutes || 45} min</span>}
       </span>
     </div>
   );
