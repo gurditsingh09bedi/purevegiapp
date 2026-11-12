@@ -207,6 +207,19 @@ def test_table_qr_lookup(client):
     assert client.get("/tables/qr/nonsense").status_code == 404
 
 
+def test_tables_edit_and_delete(client):
+    c = client
+    owner = login(c, "owner@purevegi.co.uk", "owner-pass-123")
+    assert c.post("/admin/tables", headers=owner, json={"number": "1", "seats": 2}).status_code == 409  # taken
+    t = c.post("/admin/tables", headers=owner, json={"number": "Window", "seats": 2}).json()
+    assert t["qr_url"].startswith("/t/")
+    assert c.put(f"/admin/tables/{t['id']}", headers=owner, json={"number": "W1", "seats": 6}).json()["seats"] == 6
+    assert c.delete(f"/admin/tables/{t['id']}", headers=owner).status_code == 204
+    assert all(x["number"] != "W1" for x in c.get("/admin/tables", headers=owner).json())
+    qr = t["qr_url"].split("/t/")[1]
+    assert c.get(f"/tables/qr/{qr}").status_code == 404  # its QR code stops working
+
+
 def test_table_bookings_never_clash(client):
     """Seed has 10 tables of 4. The 11th booking at 7pm is refused with other free times."""
     c = client

@@ -282,3 +282,17 @@ fieldset.allergens { border: 1px solid var(--line); border-radius: 10px; display
 .till .seg { display: grid; grid-template-columns: 1fr 1fr; background: #ece5d3; border-radius: 999px; padding: 4px; gap: 4px; }
 .till .seg button { font: inherit; font-weight: 800; border: 0; background: transparent; color: var(--green, #023e32); padding: 10px; border-radius: 999px; cursor: pointer; }
 .till .seg button.on { background: var(--green, #023e32); color: #fff; }
+.tables-list .table-no { font-size: 1.2rem; }
+.tables-list .busy-row { background: #f4fbf6; }
+.tab-now { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.badge.ok { background: #e3f4e8; color: #1f6b3a; }
+.badge.warn { background: #fff1de; color: #8a4a06; }
+.danger-text { color: #b3261e; }
+.qr-card { text-align: center; }
+.qr-card img { display: block; margin: 8px auto; border-radius: 12px; }
+@media print {
+  body * { visibility: hidden; }
+  .qr-card, .qr-card * { visibility: visible; }
+  .qr-card { position: fixed; inset: 0; margin: auto; box-shadow: none; }
+  .qr-card .modal-actions { display: none; }
+}

@@ -12,7 +12,7 @@ from ..db import get_db
 from ..deps import admin_only, config, settings
 from ..domain.order_flow import Status
 from ..domain.settings import RestaurantSettings
-from ..models import Category, DiningTable, MenuItem, Option, OptionGroup, Order, Promotion, Role, User
+from ..models import Category, DiningTable, MenuItem, Option, OptionGroup, Order, Promotion, Role, TableSession, User
 from ..schemas import (
     CategoryIn,
     CategoryOut,
@@ -219,19 +219,62 @@ def create_staff(body: StaffIn, db: Session = Depends(get_db), actor: User = Dep
 @router.get("/tables", response_model=list[TableOut])
 def list_tables(db: Session = Depends(get_db), cfg: AppConfig = Depends(config)):
     out = []
-    for t in db.scalars(select(DiningTable).order_by(DiningTable.id)).all():
+    for t in db.scalars(select(DiningTable).where(DiningTable.is_active.is_(True)).order_by(DiningTable.id)).all():
         row = TableOut.model_validate(t)
         row.qr_url = f"/t/{table_token(t.id, cfg.jwt_secret)}"  # prefix with the website domain when printing
         out.append(row)
     return out
 
 
+def _number_free(db: Session, number: str, skip_id: int | None = None) -> None:
+    other = db.scalar(select(DiningTable).where(DiningTable.number == number.strip()))
+    if other is not None and other.id != skip_id:
+        raise HTTPException(409, f"there is already a table {number}")
+
+
 @router.post("/tables", response_model=TableOut, status_code=201)
-def create_table(body: TableIn, db: Session = Depends(get_db)):
-    t = DiningTable(number=body.number, seats=body.seats)
+def create_table(body: TableIn, db: Session = Depends(get_db), cfg: AppConfig = Depends(config)):
+    if not body.number.strip():
+        raise HTTPException(422, "give the table a number or name")
+    _number_free(db, body.number)
+    t = DiningTable(number=body.number.strip(), seats=body.seats)
     db.add(t)
     db.commit()
-    return t
+    row = TableOut.model_validate(t)
+    row.qr_url = f"/t/{table_token(t.id, cfg.jwt_secret)}"
+    return row
+
+
+@router.put("/tables/{table_id}", response_model=TableOut)
+def update_table(table_id: int, body: TableIn, db: Session = Depends(get_db), cfg: AppConfig = Depends(config)):
+    """Rename a table or change its seats. Its QR code stays the same."""
+    t = db.get(DiningTable, table_id)
+    if t is None or not t.is_active:
+        _404("table")
+    _number_free(db, body.number, skip_id=t.id)
+    t.number, t.seats = body.number.strip(), body.seats
+    db.commit()
+    row = TableOut.model_validate(t)
+    row.qr_url = f"/t/{table_token(t.id, cfg.jwt_secret)}"
+    return row
+
+
+@router.delete("/tables/{table_id}", status_code=204)
+def delete_table(table_id: int, db: Session = Depends(get_db)):
+    """Remove a table. Its QR code stops working. Past orders keep their history, so a table that was
+    ever used is hidden rather than erased (and its number is freed for a new table)."""
+    t = db.get(DiningTable, table_id)
+    if t is None or not t.is_active:
+        _404("table")
+    if db.scalar(select(TableSession).where(TableSession.table_id == t.id, TableSession.closed_at.is_(None))):
+        raise HTTPException(409, f"table {t.number} has an open bill: take payment first")
+    used = db.scalar(select(func.count(TableSession.id)).where(TableSession.table_id == t.id))
+    if used:
+        t.is_active = False
+        t.number = f"old{t.id}-{t.number}"[:16]
+    else:
+        db.delete(t)
+    db.commit()
 
 
 # --- Orders and reports -----------------------------------------------------------------
